@@ -2,6 +2,8 @@ import "reflect-metadata";
 import { DataSource } from "typeorm";
 import dotenv from "dotenv";
 import path from "path";
+import { User } from "./entities/user.entity";
+import { CreateUsersTable1711800000000 } from "./migrations/1711800000000-CreateUsersTable";
 
 dotenv.config({ quiet: true });
 
@@ -13,7 +15,7 @@ export const AppDataSource = new DataSource({
   ssl: isSsl ? { rejectUnauthorized: false } : false,
   synchronize: false,
   logging: process.env.NODE_ENV === "development",
-  entities: [path.join(__dirname, "entities/**/*.{ts,js}")],
-  migrations: [path.join(__dirname, "migrations/**/*.{ts,js}")],
+  entities: [User, path.join(__dirname, "entities/**/*.{ts,js}")],
+  migrations: [CreateUsersTable1711800000000, path.join(__dirname, "migrations/**/*.{ts,js}")],
   subscribers: [],
 });
