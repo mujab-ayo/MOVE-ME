@@ -3,9 +3,11 @@ import { DataSource } from "typeorm";
 import dotenv from "dotenv";
 import path from "path";
 import { User } from "./entities/user.entity";
-import { CreateUsersTable1711800000000 } from "./migrations/1711800000000-CreateUsersTable";
+import { Vehicle } from "./entities/vehicle.entity";
+import { Route } from "./entities/route.entity";
+import { Departure } from "./entities/departure.entity";
 
-dotenv.config({ quiet: true });
+dotenv.config({ path: process.env.NODE_ENV === 'test' ? '.env.test' : '.env' });
 
 const isSsl = process.env.DATABASE_URL?.includes("sslmode=require");
 
@@ -15,7 +17,7 @@ export const AppDataSource = new DataSource({
   ssl: isSsl ? { rejectUnauthorized: false } : false,
   synchronize: false,
   logging: process.env.NODE_ENV === "development",
-  entities: [User, path.join(__dirname, "entities/**/*.{ts,js}")],
-  migrations: [CreateUsersTable1711800000000, path.join(__dirname, "migrations/**/*.{ts,js}")],
+  entities: [User, Vehicle, Route, Departure],
+  migrations: [path.join(__dirname, "migrations/**/*.{ts,js}")],
   subscribers: [],
 });

@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import { UserRole } from "../entities/user.entity";
 
-dotenv.config({ quiet: true });
+dotenv.config({ path: process.env.NODE_ENV === 'test' ? '.env.test' : '.env' });
 
 interface JwtPayload {
   sub: string;

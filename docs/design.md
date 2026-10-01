@@ -347,6 +347,22 @@ CREATE TABLE routes (
   active                 BOOLEAN NOT NULL DEFAULT true
 );
 
+-- `timestamptz + interval` is STABLE, not IMMUTABLE, in Postgres — it's the
+-- same generic operator used for month/day intervals, where the result can
+-- depend on timezone/DST, so Postgres marks it unsafe for indexes across the
+-- board. An EXCLUDE constraint is backed by a GiST index, so Postgres refuses
+-- to create it with that expression inline (confirmed against a real DB:
+-- "functions in index expression must be marked IMMUTABLE"). Our interval is
+-- always pure minutes, so the result genuinely never depends on timezone —
+-- we assert that ourselves with a small wrapper function.
+CREATE OR REPLACE FUNCTION departure_end_time(ts TIMESTAMPTZ, mins INT)
+RETURNS TIMESTAMPTZ
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT ts + (mins * interval '1 minute');
+$$;
+
 CREATE TABLE departures (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   driver_id         UUID NOT NULL REFERENCES users(id),
@@ -365,13 +381,13 @@ CREATE TABLE departures (
   -- Half-open range + '[)' bound makes touching boundaries legal.
   EXCLUDE USING gist (
     driver_id WITH =,
-    tstzrange(departure_time, departure_time + (duration_minutes * interval '1 minute'), '[)') WITH &&
+    tstzrange(departure_time, departure_end_time(departure_time, duration_minutes), '[)') WITH &&
   ) WHERE (status <> 'CANCELLED'),
 
   -- MM-02: same rule for the vehicle.
   EXCLUDE USING gist (
     vehicle_id WITH =,
-    tstzrange(departure_time, departure_time + (duration_minutes * interval '1 minute'), '[)') WITH &&
+    tstzrange(departure_time, departure_end_time(departure_time, duration_minutes), '[)') WITH &&
   ) WHERE (status <> 'CANCELLED')
 );
 

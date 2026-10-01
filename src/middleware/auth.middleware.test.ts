@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import { requireAuth, requireRole } from "./auth.middleware";
 
-dotenv.config({ quiet: true });
+dotenv.config({ path: process.env.NODE_ENV === 'test' ? '.env.test' : '.env' });
 
 describe("Auth Middleware", () => {
   const secret = process.env.JWT_SECRET || "test_secret";
