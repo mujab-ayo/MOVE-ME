@@ -110,7 +110,13 @@ router.post(
         return;
       }
 
-      const passwordValid = await argon2.verify(user.password_hash, password);
+      let passwordValid = false;
+      try {
+        passwordValid = await argon2.verify(user.password_hash, password);
+      } catch (_verifyErr) {
+        passwordValid = false;
+      }
+
       if (!passwordValid) {
         res.status(401).json({ error: "Invalid email or password" });
         return;

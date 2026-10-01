@@ -1,6 +1,7 @@
 import request from "supertest";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
+import argon2 from "argon2";
 import app from "../app";
 import { AppDataSource } from "../data-source";
 import { User } from "../entities/user.entity";
@@ -20,6 +21,8 @@ describe("Auth Endpoints Integration", () => {
     const userRepo = AppDataSource.getRepository(User);
     await userRepo.delete({ email: "newpassenger@test.com" });
     await userRepo.delete({ email: "newdriver@test.com" });
+    await userRepo.delete({ email: "newadmin@test.com" });
+    await userRepo.delete({ email: "newlegacyadmin@test.com" });
 
     if (AppDataSource.isInitialized) {
       await AppDataSource.destroy();
@@ -106,6 +109,56 @@ describe("Auth Endpoints Integration", () => {
       });
 
       expect(res.status).toBe(401);
+    });
+
+    it("returns 200 with JWT containing sub and role ONLY for ADMIN login", async () => {
+      const userRepo = AppDataSource.getRepository(User);
+      const adminPassword = "AdminSecretPassword123";
+      const adminHash = await argon2.hash(adminPassword);
+
+      await userRepo.save(
+        userRepo.create({
+          email: "newadmin@test.com",
+          password_hash: adminHash,
+          role: "ADMIN",
+          driver_enabled: false,
+        })
+      );
+
+      const res = await request(app).post("/auth/login").send({
+        email: "newadmin@test.com",
+        password: adminPassword,
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.body.accessToken).toBeDefined();
+      expect(res.body.role).toBe("ADMIN");
+
+      const decoded = jwt.verify(res.body.accessToken, secret) as any;
+      expect(decoded.sub).toBeDefined();
+      expect(decoded.role).toBe("ADMIN");
+      expect(decoded.driver_enabled).toBeUndefined();
+      expect(decoded.driverEnabled).toBeUndefined();
+    });
+
+    it("returns 401 via catch when stored hash is malformed (e.g. missing parallelism)", async () => {
+      const userRepo = AppDataSource.getRepository(User);
+      await userRepo.save(
+        userRepo.create({
+          email: "newlegacyadmin@test.com",
+          password_hash: "$argon2id$v=19$m=65536,t=3$nRWB8RmQ9cQPsBRngSTt9Q$2hN8F1XxRQf+62k444j8cFeRbK6tHudQ/JS5LDkMviE",
+          role: "ADMIN",
+          driver_enabled: false,
+        })
+      );
+
+      const res = await request(app).post("/auth/login").send({
+        email: "newlegacyadmin@test.com",
+        password: "SecretPassword123",
+      });
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toMatch(/invalid email or password/i);
     });
   });
 });
