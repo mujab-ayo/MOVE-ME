@@ -8,6 +8,14 @@ afterAll(async () => {
   }
 });
 
+describe("GET /", () => {
+  it("should redirect to /docs", async () => {
+    const res = await request(app).get("/");
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe("/docs");
+  });
+});
+
 describe("GET /health", () => {
   it("should return status 200 and { status: 'ok' }", async () => {
     const res = await request(app).get("/health");

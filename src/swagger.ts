@@ -12,8 +12,16 @@ const options: swaggerJsdoc.Options = {
     },
     servers: [
       {
-        url: "http://localhost:3000",
-        description: "Development server",
+        url: "/",
+        description: "Current environment (auto-detected)",
+      },
+      {
+        url: process.env.RENDER_EXTERNAL_URL || "https://move-me-1nu3.onrender.com",
+        description: "Render server (hosted)",
+      },
+      {
+        url: `http://localhost:${process.env.PORT || 3000}`,
+        description: "Local development server",
       },
     ],
     tags: [
