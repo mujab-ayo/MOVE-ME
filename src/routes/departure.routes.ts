@@ -48,6 +48,174 @@ const searchDeparturesQuerySchema = z
     }
   });
 
+/**
+ * @openapi
+ * /departures/search:
+ *   get:
+ *     summary: Search departures
+ *     description: Searches scheduled departures by route, mode, and timing. Immediate mode looks for departures within 15 minutes from now. Scheduled mode queries departures matching or after the given datetime. Requires PASSENGER role.
+ *     tags:
+ *       - Departures
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: routeId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: UUID of the target route
+ *       - in: query
+ *         name: mode
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum:
+ *             - SOLO
+ *             - POOLED
+ *         description: Desired ride mode
+ *       - in: query
+ *         name: when
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum:
+ *             - immediate
+ *             - scheduled
+ *         description: Search window type (immediate = next 15 mins, scheduled = target datetime)
+ *       - in: query
+ *         name: datetime
+ *         required: false
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Required when when=scheduled. Target departure ISO datetime.
+ *     responses:
+ *       200:
+ *         description: Search results containing available departures
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 results:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                         format: uuid
+ *                       departureId:
+ *                         type: string
+ *                         format: uuid
+ *                       route_id:
+ *                         type: string
+ *                         format: uuid
+ *                       routeId:
+ *                         type: string
+ *                         format: uuid
+ *                       pickup_point:
+ *                         type: string
+ *                         example: Ikeja Bus Terminal
+ *                       pickupPoint:
+ *                         type: string
+ *                         example: Ikeja Bus Terminal
+ *                       dropoff_point:
+ *                         type: string
+ *                         example: Victoria Island (Eko Hotel)
+ *                       dropoffPoint:
+ *                         type: string
+ *                         example: Victoria Island (Eko Hotel)
+ *                       departure_time:
+ *                         type: string
+ *                         format: date-time
+ *                         example: "2026-10-02T12:00:00.000Z"
+ *                       departureTime:
+ *                         type: string
+ *                         format: date-time
+ *                         example: "2026-10-02T12:00:00.000Z"
+ *                       driver_name:
+ *                         type: string
+ *                         example: John Driver
+ *                       driverName:
+ *                         type: string
+ *                         example: John Driver
+ *                       driver:
+ *                         type: string
+ *                         example: John Driver
+ *                       fare_amount:
+ *                         type: string
+ *                         example: "5000.00"
+ *                       fareAmount:
+ *                         type: string
+ *                         example: "5000.00"
+ *                       mode:
+ *                         type: string
+ *                         example: SOLO
+ *                       capacity:
+ *                         type: integer
+ *                         example: 1
+ *                       available_capacity:
+ *                         type: integer
+ *                         example: 1
+ *                       availableCapacity:
+ *                         type: integer
+ *                         example: 1
+ *                 empty:
+ *                   type: boolean
+ *                   example: false
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Validation failed
+ *                 details:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       field:
+ *                         type: string
+ *                       message:
+ *                         type: string
+ *       401:
+ *         description: Authentication required or invalid token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Authentication token missing or invalid
+ *       403:
+ *         description: Forbidden - passenger role required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Forbidden: insufficient permissions"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Internal server error
+ */
 // GET /departures/search - search departures (immediate vs scheduled)
 router.get(
   "/search",
@@ -134,6 +302,140 @@ router.get(
   }
 );
 
+/**
+ * @openapi
+ * /departures:
+ *   post:
+ *     summary: Publish departure
+ *     description: Publishes a new departure. Requires DRIVER role, driver must be enabled (driver_enabled=true), vehicle must belong to the driver and be active, and route must exist and be active. Prevents overlapping departures via database exclusion constraints.
+ *     tags:
+ *       - Departures
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - vehicleId
+ *               - routeId
+ *               - mode
+ *               - departureTime
+ *             properties:
+ *               vehicleId:
+ *                 type: string
+ *                 format: uuid
+ *                 example: 123e4567-e89b-12d3-a456-426614174000
+ *               routeId:
+ *                 type: string
+ *                 format: uuid
+ *                 example: 7b13bc6e-19d2-4e89-b7e1-8cbdf6a92892
+ *               mode:
+ *                 type: string
+ *                 enum:
+ *                   - SOLO
+ *                   - POOLED
+ *                 example: SOLO
+ *               departureTime:
+ *                 type: string
+ *                 format: date-time
+ *                 example: "2026-10-02T12:00:00Z"
+ *     responses:
+ *       201:
+ *         description: Departure published successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 departureId:
+ *                   type: string
+ *                   format: uuid
+ *                   example: 123e4567-e89b-12d3-a456-426614174000
+ *                 capacity:
+ *                   type: integer
+ *                   example: 1
+ *                 fareAmount:
+ *                   type: string
+ *                   example: "5000.00"
+ *                 durationMinutes:
+ *                   type: integer
+ *                   example: 45
+ *                 status:
+ *                   type: string
+ *                   example: SCHEDULED
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Validation failed
+ *                 details:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       field:
+ *                         type: string
+ *                       message:
+ *                         type: string
+ *       401:
+ *         description: Authentication required or invalid token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Authentication token missing or invalid
+ *       403:
+ *         description: Driver not enabled or vehicle does not belong to driver
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Driver is not enabled to publish departures
+ *       404:
+ *         description: Route not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Route not found
+ *       409:
+ *         description: Overlapping departure detected
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Overlapping departure detected for this driver or vehicle
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Internal server error
+ */
 // POST /departures - publish a departure (driver only, gate-checked)
 router.post(
   "/",
