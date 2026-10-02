@@ -81,7 +81,10 @@ router.get(
         qb.orderBy("departure.departure_time", "ASC");
       } else {
         const targetDate = new Date(datetime!);
-        qb.andWhere("departure.departure_time >= :targetDate", { targetDate });
+        qb.andWhere(
+          "departure.departure_time >= :targetDate AND departure.departure_time > now()",
+          { targetDate }
+        );
         qb.orderBy("departure.departure_time", "ASC");
         qb.take(20);
       }

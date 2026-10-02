@@ -388,5 +388,88 @@ describe("Departure Endpoints Integration", () => {
       expect(item.available_capacity).toBe(4);
       expect(item.fare_amount).toBe("2500.00");
     });
+
+    it("regression: scheduled search excludes already-passed departures when searching with a past datetime", async () => {
+      const now = Date.now();
+      const pastDepartureTime = new Date(now - 24 * 60 * 60 * 1000).toISOString(); // 24 hours ago (yesterday)
+      const futureDepartureTime = new Date(now + 24 * 60 * 60 * 1000).toISOString(); // 24 hours in future (tomorrow)
+      const evenEarlierDatetime = new Date(now - 48 * 60 * 60 * 1000).toISOString(); // 48 hours ago
+
+      // 1. Publish a departure with departureTime in the past
+      const pastPubRes = await request(app)
+        .post("/departures")
+        .set("Authorization", `Bearer ${driverToken}`)
+        .send({
+          vehicleId: testVehicle.id,
+          routeId: testRoute.id,
+          mode: "SOLO",
+          departureTime: pastDepartureTime,
+        });
+
+      expect(pastPubRes.status).toBe(201);
+      const pastDepartureId = pastPubRes.body.departureId;
+
+      // 2. Search with when=scheduled and datetime even further in the past (only past departure exists)
+      const searchPastRes = await request(app)
+        .get("/departures/search")
+        .set("Authorization", `Bearer ${passengerToken}`)
+        .query({
+          routeId: testRoute.id,
+          mode: "SOLO",
+          when: "scheduled",
+          datetime: evenEarlierDatetime,
+        });
+
+      expect(searchPastRes.status).toBe(200);
+      expect(searchPastRes.body.results).toHaveLength(0);
+      expect(searchPastRes.body.empty).toBe(true);
+
+      // 3. Publish a future departure
+      const futurePubRes = await request(app)
+        .post("/departures")
+        .set("Authorization", `Bearer ${driverToken}`)
+        .send({
+          vehicleId: testVehicle.id,
+          routeId: testRoute.id,
+          mode: "SOLO",
+          departureTime: futureDepartureTime,
+        });
+
+      expect(futurePubRes.status).toBe(201);
+      const futureDepartureId = futurePubRes.body.departureId;
+
+      // 4. Searching with datetime even further in the past should now return future departure, but NOT past departure
+      const searchBothRes = await request(app)
+        .get("/departures/search")
+        .set("Authorization", `Bearer ${passengerToken}`)
+        .query({
+          routeId: testRoute.id,
+          mode: "SOLO",
+          when: "scheduled",
+          datetime: evenEarlierDatetime,
+        });
+
+      expect(searchBothRes.status).toBe(200);
+      const bothResultIds = searchBothRes.body.results.map((r: any) => r.id);
+      expect(bothResultIds).not.toContain(pastDepartureId);
+      expect(bothResultIds).toContain(futureDepartureId);
+
+      // 5. Searching with a genuinely future datetime still returns future departures >= datetime
+      const targetFutureDatetime = new Date(now + 12 * 60 * 60 * 1000).toISOString(); // 12 hours in future
+      const searchFutureRes = await request(app)
+        .get("/departures/search")
+        .set("Authorization", `Bearer ${passengerToken}`)
+        .query({
+          routeId: testRoute.id,
+          mode: "SOLO",
+          when: "scheduled",
+          datetime: targetFutureDatetime,
+        });
+
+      expect(searchFutureRes.status).toBe(200);
+      const futureResultIds = searchFutureRes.body.results.map((r: any) => r.id);
+      expect(futureResultIds).not.toContain(pastDepartureId);
+      expect(futureResultIds).toContain(futureDepartureId);
+    });
   });
 });

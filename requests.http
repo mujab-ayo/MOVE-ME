@@ -1,0 +1,148 @@
+### MoveMe API - Week 2 Shared Environment & Demo Requests
+### Compatible with REST Client (VS Code / JetBrains / Antigravity)
+
+@baseUrl = http://localhost:3000
+# For deployed environments (e.g. Render / Railway):
+# @baseUrl = https://move-me.onrender.com
+
+### Variables (Update these with values returned from earlier requests)
+@passengerEmail = passenger.demo@example.com
+@driverEmail = driver.demo@example.com
+@adminEmail = admin@example.com
+@password = Password123!
+
+# Paste JWT tokens obtained from login below:
+@passengerToken = YOUR_PASSENGER_JWT_TOKEN
+@driverToken = YOUR_DRIVER_JWT_TOKEN
+@adminToken = YOUR_ADMIN_JWT_TOKEN
+
+# Dynamic resource IDs:
+@driverId = YOUR_DRIVER_ID
+@vehicleId = YOUR_VEHICLE_ID
+@routeId = YOUR_ROUTE_ID
+
+###############################################################################
+# 0. Health Check
+###############################################################################
+
+### Health check
+GET {{baseUrl}}/health
+Content-Type: application/json
+
+###############################################################################
+# 1. Accounts & Registration
+###############################################################################
+
+### 1a. Register Passenger
+POST {{baseUrl}}/auth/register/passenger
+Content-Type: application/json
+
+{
+  "email": "{{passengerEmail}}",
+  "password": "{{password}}"
+}
+
+### 1b. Register Driver (Initial status: driver_enabled = false)
+POST {{baseUrl}}/auth/register/driver
+Content-Type: application/json
+
+{
+  "email": "{{driverEmail}}",
+  "password": "{{password}}"
+}
+
+###############################################################################
+# 2. Authentication & Login
+###############################################################################
+
+### 2a. Login Passenger (Returns JWT with sub and role: PASSENGER)
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{passengerEmail}}",
+  "password": "{{password}}"
+}
+
+### 2b. Login Driver (Returns JWT with sub and role: DRIVER)
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{driverEmail}}",
+  "password": "{{password}}"
+}
+
+### 2c. Login Admin (Returns JWT with sub and role: ADMIN)
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{adminEmail}}",
+  "password": "{{password}}"
+}
+
+###############################################################################
+# 3. Driver Vehicles & Data Ownership
+###############################################################################
+
+### 3a. Add Vehicle (Driver authenticated)
+POST {{baseUrl}}/drivers/me/vehicles
+Authorization: Bearer {{driverToken}}
+Content-Type: application/json
+
+{
+  "description": "Toyota Camry 2021 (Silver)",
+  "registrationIdentifier": "LAG-789-XY",
+  "seatCapacity": 4
+}
+
+### 3b. List My Vehicles (Strict data ownership: only calling driver's vehicles)
+GET {{baseUrl}}/drivers/me/vehicles
+Authorization: Bearer {{driverToken}}
+
+###############################################################################
+# 4. Admin Driver Enablement Gate
+###############################################################################
+
+### 4a. List Pending Drivers (Admin only)
+GET {{baseUrl}}/admin/drivers?status=pending
+Authorization: Bearer {{adminToken}}
+
+### 4b. Enable Driver (Admin only - required before driver can publish departures)
+PATCH {{baseUrl}}/admin/drivers/{{driverId}}/enable
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "enabled": true
+}
+
+###############################################################################
+# 5. Departure Publishing
+###############################################################################
+
+### 5a. Publish Departure (Driver only - gate checked: enabled driver, owned vehicle, active route)
+# Note: Ensure departureTime is in ISO format. The routeId must be an existing seeded route.
+POST {{baseUrl}}/departures
+Authorization: Bearer {{driverToken}}
+Content-Type: application/json
+
+{
+  "vehicleId": "{{vehicleId}}",
+  "routeId": "{{routeId}}",
+  "mode": "SOLO",
+  "departureTime": "2026-10-02T12:00:00Z"
+}
+
+###############################################################################
+# 6. Ride Discovery & Search
+###############################################################################
+
+### 6a. Search Departures - Immediate Mode (between now and now + 15 minutes)
+GET {{baseUrl}}/departures/search?routeId={{routeId}}&mode=SOLO&when=immediate
+Authorization: Bearer {{passengerToken}}
+
+### 6b. Search Departures - Scheduled Mode (departure_time >= datetime AND > now(), limit 20)
+GET {{baseUrl}}/departures/search?routeId={{routeId}}&mode=POOLED&when=scheduled&datetime=2026-10-02T10:00:00Z
+Authorization: Bearer {{passengerToken}}
