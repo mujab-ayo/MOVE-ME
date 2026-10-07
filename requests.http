@@ -146,3 +146,13 @@ Authorization: Bearer {{passengerToken}}
 ### 6b. Search Departures - Scheduled Mode (departure_time >= datetime AND > now(), limit 20)
 GET {{baseUrl}}/departures/search?routeId={{routeId}}&mode=POOLED&when=scheduled&datetime=2026-10-02T10:00:00Z
 Authorization: Bearer {{passengerToken}}
+
+###############################################################################
+# 7. Reservations (Capacity-Guard Transaction)
+###############################################################################
+
+### 7a. Create Reservation (Passenger only - holds seat for 5 mins)
+POST {{baseUrl}}/departures/{{departureId}}/reservations
+Authorization: Bearer {{passengerToken}}
+Content-Type: application/json
+

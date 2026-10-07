@@ -512,4 +512,223 @@ router.post(
   }
 );
 
+export const HOLD_MINUTES = parseInt(process.env.HOLD_MINUTES || "5", 10);
+
+/**
+ * @openapi
+ * /departures/{id}/reservations:
+ *   post:
+ *     summary: Create departure reservation
+ *     description: Reserves a seat on a scheduled departure using the capacity-guard transaction. Holds capacity for 5 minutes (HOLD_MINUTES) in PENDING_PAYMENT status. Identical code path for SOLO and POOLED departures. Requires PASSENGER role.
+ *     tags:
+ *       - Departures
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Departure UUID to reserve
+ *     responses:
+ *       201:
+ *         description: Reservation created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 reservationId:
+ *                   type: string
+ *                   format: uuid
+ *                   example: 123e4567-e89b-12d3-a456-426614174000
+ *                 status:
+ *                   type: string
+ *                   example: PENDING_PAYMENT
+ *                 holdExpiresAt:
+ *                   type: string
+ *                   format: date-time
+ *                   example: "2026-10-02T12:05:00.000Z"
+ *                 fareAmount:
+ *                   type: string
+ *                   example: "2500.00"
+ *       400:
+ *         description: Invalid departure ID format
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Invalid departure ID format
+ *       401:
+ *         description: Authentication required or invalid token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Authentication token missing or invalid
+ *       403:
+ *         description: Forbidden - passenger role required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Forbidden: insufficient permissions"
+ *       404:
+ *         description: Departure not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Departure not found
+ *       409:
+ *         description: Departure ineligible, no capacity, or duplicate active reservation
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: No available capacity on this departure
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Internal server error
+ */
+// POST /departures/:id/reservations - reserve a seat (capacity-guard transaction)
+router.post(
+  "/:id/reservations",
+  requireAuth,
+  requireRole("PASSENGER"),
+  async (req: Request, res: Response): Promise<void> => {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+    if (!z.string().uuid().safeParse(id).success) {
+      res.status(400).json({ error: "Invalid departure ID format" });
+      return;
+    }
+
+    const passengerId = req.user!.id;
+    const holdMinutes = parseInt(process.env.HOLD_MINUTES || "5", 10);
+
+    const queryRunner = AppDataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // 1. Serializes all concurrent attempts on this departure.
+      const departures = await queryRunner.query(
+        `SELECT id, capacity, status, departure_time, fare_amount
+         FROM departures
+         WHERE id = $1
+         FOR UPDATE;`,
+        [id]
+      );
+
+      if (departures.length === 0) {
+        await queryRunner.rollbackTransaction();
+        res.status(404).json({ error: "Departure not found" });
+        return;
+      }
+
+      const departure = departures[0];
+
+      // 2. Opportunistically expire the caller's OWN stale hold on this departure
+      // (if any), so a genuinely-expired attempt never blocks their retry,
+      // without needing any global sweep.
+      await queryRunner.query(
+        `UPDATE reservations
+         SET status = 'EXPIRED'
+         WHERE departure_id = $1 AND passenger_id = $2
+           AND status = 'PENDING_PAYMENT' AND hold_expires_at <= now();`,
+        [id, passengerId]
+      );
+
+      // 3. Eligibility gate (application code, using the locked row above):
+      //   status = 'SCHEDULED' AND now() < departure_time
+      const now = new Date();
+      const departureTime = new Date(departure.departure_time);
+      if (departure.status !== "SCHEDULED" || now >= departureTime) {
+        await queryRunner.rollbackTransaction();
+        res.status(409).json({
+          error: "Departure is not eligible for reservations",
+        });
+        return;
+      }
+
+      // 4. Live availability check — no counter column, no drift possible.
+      const countResult = await queryRunner.query(
+        `SELECT count(*)::int AS count FROM reservations
+         WHERE departure_id = $1
+           AND (status = 'CONFIRMED'
+                OR (status = 'PENDING_PAYMENT' AND hold_expires_at > now()));`,
+        [id]
+      );
+
+      const activeReservations = parseInt(countResult[0]?.count ?? "0", 10);
+      if (activeReservations >= departure.capacity) {
+        await queryRunner.rollbackTransaction();
+        res.status(409).json({
+          error: "No available capacity on this departure",
+        });
+        return;
+      }
+
+      // 5. If count < capacity, proceed to insert reservation:
+      const insertResult = await queryRunner.query(
+        `INSERT INTO reservations (departure_id, passenger_id, status, fare_amount, hold_expires_at)
+         VALUES ($1, $2, 'PENDING_PAYMENT', $3, now() + ($4 * interval '1 minute'))
+         RETURNING id, status, hold_expires_at, fare_amount;`,
+        [id, passengerId, departure.fare_amount, holdMinutes]
+      );
+
+      await queryRunner.commitTransaction();
+
+      const reservation = insertResult[0];
+      res.status(201).json({
+        reservationId: reservation.id,
+        status: reservation.status,
+        holdExpiresAt: reservation.hold_expires_at,
+        fareAmount: reservation.fare_amount,
+      });
+    } catch (err: any) {
+      await queryRunner.rollbackTransaction();
+
+      // Postgres error code 23505: unique_violation from partial unique index
+      // one_active_reservation_per_passenger_per_departure
+      if (err.code === "23505") {
+        res.status(409).json({
+          error: "Passenger already has an active reservation for this departure",
+        });
+        return;
+      }
+
+      res.status(500).json({ error: "Internal server error" });
+    } finally {
+      await queryRunner.release();
+    }
+  }
+);
+
 export default router;
+
