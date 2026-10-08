@@ -7,6 +7,8 @@ import { User } from "../entities/user.entity";
 import { Vehicle } from "../entities/vehicle.entity";
 import { Route } from "../entities/route.entity";
 import { Departure } from "../entities/departure.entity";
+import { Reservation } from "../entities/reservation.entity";
+import { Payment } from "../entities/payment.entity";
 
 dotenv.config({ path: process.env.NODE_ENV === "test" ? ".env.test" : ".env" });
 
@@ -28,12 +30,16 @@ describe("Departure Endpoints Integration", () => {
       await AppDataSource.initialize();
     }
 
+    const paymentRepo = AppDataSource.getRepository(Payment);
+    const reservationRepo = AppDataSource.getRepository(Reservation);
     const departureRepo = AppDataSource.getRepository(Departure);
     const vehicleRepo = AppDataSource.getRepository(Vehicle);
     const userRepo = AppDataSource.getRepository(User);
     const routeRepo = AppDataSource.getRepository(Route);
 
     // Clean up
+    await paymentRepo.createQueryBuilder().delete().execute();
+    await reservationRepo.createQueryBuilder().delete().execute();
     await departureRepo.createQueryBuilder().delete().execute();
     await vehicleRepo.createQueryBuilder().delete().execute();
     await userRepo.createQueryBuilder().delete().execute();
@@ -121,11 +127,15 @@ describe("Departure Endpoints Integration", () => {
   }, 30000);
 
   afterAll(async () => {
+    const paymentRepo = AppDataSource.getRepository(Payment);
+    const reservationRepo = AppDataSource.getRepository(Reservation);
     const departureRepo = AppDataSource.getRepository(Departure);
     const vehicleRepo = AppDataSource.getRepository(Vehicle);
     const userRepo = AppDataSource.getRepository(User);
     const routeRepo = AppDataSource.getRepository(Route);
 
+    await paymentRepo.createQueryBuilder().delete().execute();
+    await reservationRepo.createQueryBuilder().delete().execute();
     await departureRepo.createQueryBuilder().delete().execute();
     await vehicleRepo.createQueryBuilder().delete().execute();
     await userRepo.createQueryBuilder().delete().execute();
@@ -137,7 +147,11 @@ describe("Departure Endpoints Integration", () => {
   }, 30000);
 
   beforeEach(async () => {
+    const paymentRepo = AppDataSource.getRepository(Payment);
+    const reservationRepo = AppDataSource.getRepository(Reservation);
     const departureRepo = AppDataSource.getRepository(Departure);
+    await paymentRepo.createQueryBuilder().delete().execute();
+    await reservationRepo.createQueryBuilder().delete().execute();
     await departureRepo.createQueryBuilder().delete().execute();
   });
 

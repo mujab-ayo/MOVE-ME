@@ -5,6 +5,9 @@ import app from "../app";
 import { AppDataSource } from "../data-source";
 import { User } from "../entities/user.entity";
 import { Vehicle } from "../entities/vehicle.entity";
+import { Departure } from "../entities/departure.entity";
+import { Reservation } from "../entities/reservation.entity";
+import { Payment } from "../entities/payment.entity";
 
 dotenv.config({ path: process.env.NODE_ENV === 'test' ? '.env.test' : '.env' });
 
@@ -24,10 +27,16 @@ describe("Driver and Admin Endpoints Integration", () => {
       await AppDataSource.initialize();
     }
 
+    const paymentRepo = AppDataSource.getRepository(Payment);
+    const reservationRepo = AppDataSource.getRepository(Reservation);
+    const departureRepo = AppDataSource.getRepository(Departure);
     const userRepo = AppDataSource.getRepository(User);
     const vehicleRepo = AppDataSource.getRepository(Vehicle);
 
     // Clean up test users / vehicles
+    await paymentRepo.createQueryBuilder().delete().execute();
+    await reservationRepo.createQueryBuilder().delete().execute();
+    await departureRepo.createQueryBuilder().delete().execute();
     await vehicleRepo.createQueryBuilder().delete().execute();
     await userRepo.createQueryBuilder().delete().execute();
 
@@ -74,8 +83,14 @@ describe("Driver and Admin Endpoints Integration", () => {
   }, 30000);
 
   afterAll(async () => {
+    const paymentRepo = AppDataSource.getRepository(Payment);
+    const reservationRepo = AppDataSource.getRepository(Reservation);
+    const departureRepo = AppDataSource.getRepository(Departure);
     const userRepo = AppDataSource.getRepository(User);
     const vehicleRepo = AppDataSource.getRepository(Vehicle);
+    await paymentRepo.createQueryBuilder().delete().execute();
+    await reservationRepo.createQueryBuilder().delete().execute();
+    await departureRepo.createQueryBuilder().delete().execute();
     await vehicleRepo.createQueryBuilder().delete().execute();
     await userRepo.createQueryBuilder().delete().execute();
 

@@ -41,6 +41,14 @@ const options: swaggerJsdoc.Options = {
         name: "Departures",
         description: "Departure publishing and ride discovery",
       },
+      {
+        name: "Reservations",
+        description: "Seat reservations and payment initiation",
+      },
+      {
+        name: "Payments",
+        description: "Simulated payment provider integration",
+      },
     ],
     components: {
       securitySchemes: {

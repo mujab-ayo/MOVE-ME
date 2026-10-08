@@ -512,7 +512,7 @@ router.post(
   }
 );
 
-export const HOLD_MINUTES = parseInt(process.env.HOLD_MINUTES || "5", 10);
+export const HOLD_MINUTES = parseFloat(process.env.HOLD_MINUTES || "5");
 
 /**
  * @openapi
@@ -629,7 +629,7 @@ router.post(
     }
 
     const passengerId = req.user!.id;
-    const holdMinutes = parseInt(process.env.HOLD_MINUTES || "5", 10);
+    const holdMinutes = parseFloat(process.env.HOLD_MINUTES || "5");
 
     const queryRunner = AppDataSource.createQueryRunner();
     await queryRunner.connect();

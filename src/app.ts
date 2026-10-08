@@ -5,6 +5,8 @@ import authRouter from "./routes/auth.routes";
 import driverRouter from "./routes/driver.routes";
 import adminRouter from "./routes/admin.routes";
 import departureRouter from "./routes/departure.routes";
+import reservationRouter from "./routes/reservation.routes";
+import paymentRouter from "./routes/payment.routes";
 import { swaggerSpec } from "./swagger";
 
 const app = express();
@@ -32,6 +34,8 @@ app.use("/auth", authRouter);
 app.use("/drivers", driverRouter);
 app.use("/admin", adminRouter);
 app.use("/departures", departureRouter);
+app.use("/reservations", reservationRouter);
+app.use("/payments", paymentRouter);
 
 // Swagger UI documentation
 const swaggerUiOptions = {

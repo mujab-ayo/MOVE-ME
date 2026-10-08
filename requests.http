@@ -156,3 +156,29 @@ POST {{baseUrl}}/departures/{{departureId}}/reservations
 Authorization: Bearer {{passengerToken}}
 Content-Type: application/json
 
+###############################################################################
+# 8. Simulated Payment Flow (MM-06)
+###############################################################################
+
+### 8a. Initiate Simulated Payment (Passenger only)
+POST {{baseUrl}}/reservations/{{reservationId}}/payments
+Authorization: Bearer {{passengerToken}}
+Content-Type: application/json
+
+### 8b. Simulated Provider Callback - Success
+POST {{baseUrl}}/payments/{{paymentId}}/callback
+Content-Type: application/json
+
+{
+  "outcome": "SUCCESS"
+}
+
+### 8c. Simulated Provider Callback - Failure
+POST {{baseUrl}}/payments/{{paymentId}}/callback
+Content-Type: application/json
+
+{
+  "outcome": "FAILURE"
+}
+
+
