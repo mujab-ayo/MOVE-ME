@@ -485,5 +485,146 @@ describe("Departure Endpoints Integration", () => {
       expect(futureResultIds).not.toContain(pastDepartureId);
       expect(futureResultIds).toContain(futureDepartureId);
     });
+
+    it("live available_capacity: a SOLO departure with one active reservation does not appear in results", async () => {
+      const departureRepo = AppDataSource.getRepository(Departure);
+      const reservationRepo = AppDataSource.getRepository(Reservation);
+      const now = Date.now();
+
+      // 1. Create a SOLO departure in immediate window (capacity = 1)
+      const dep = await departureRepo.save(
+        departureRepo.create({
+          driver_id: driver.id,
+          vehicle_id: testVehicle.id,
+          route_id: testRoute.id,
+          mode: "SOLO",
+          departure_time: new Date(now + 5 * 60 * 1000),
+          duration_minutes: 45,
+          fare_amount: "7500.00",
+          capacity: 1,
+          status: "SCHEDULED",
+        })
+      );
+
+      // 2. Add an active reservation (CONFIRMED)
+      await reservationRepo.save(
+        reservationRepo.create({
+          departure_id: dep.id,
+          passenger_id: passenger.id,
+          status: "CONFIRMED",
+          fare_amount: "7500.00",
+          hold_expires_at: new Date(now + 10 * 60 * 1000),
+        })
+      );
+
+      // 3. Search for departures - capacity-1 departure is full (available_capacity <= 0), should not appear
+      const res = await request(app)
+        .get("/departures/search")
+        .set("Authorization", `Bearer ${passengerToken}`)
+        .query({
+          routeId: testRoute.id,
+          mode: "SOLO",
+          when: "immediate",
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.empty).toBe(true);
+      expect(res.body.results).toHaveLength(0);
+    });
+
+    it("live available_capacity: POOLED capacity-4 departure with 1 CONFIRMED and 1 PENDING (valid hold) shows available_capacity 2, and once expired shows 3 with no sweep", async () => {
+      const departureRepo = AppDataSource.getRepository(Departure);
+      const reservationRepo = AppDataSource.getRepository(Reservation);
+      const userRepo = AppDataSource.getRepository(User);
+      const now = Date.now();
+
+      // Second passenger for second reservation
+      const passenger2 = await userRepo.save(
+        userRepo.create({
+          email: "dep_passenger_avail_2@test.com",
+          password_hash: "hash",
+          role: "PASSENGER",
+          driver_enabled: false,
+        })
+      );
+
+      // 1. Create POOLED departure in immediate window (capacity = 4)
+      const dep = await departureRepo.save(
+        departureRepo.create({
+          driver_id: driver.id,
+          vehicle_id: testVehicle.id,
+          route_id: testRoute.id,
+          mode: "POOLED",
+          departure_time: new Date(now + 10 * 60 * 1000),
+          duration_minutes: 45,
+          fare_amount: "2500.00",
+          capacity: 4,
+          status: "SCHEDULED",
+        })
+      );
+
+      // 2. Add 1 CONFIRMED reservation
+      await reservationRepo.save(
+        reservationRepo.create({
+          departure_id: dep.id,
+          passenger_id: passenger.id,
+          status: "CONFIRMED",
+          fare_amount: "2500.00",
+          hold_expires_at: new Date(now + 10 * 60 * 1000),
+        })
+      );
+
+      // 3. Add 1 PENDING reservation with valid hold (+5 minutes)
+      const pendingReservation = await reservationRepo.save(
+        reservationRepo.create({
+          departure_id: dep.id,
+          passenger_id: passenger2.id,
+          status: "PENDING_PAYMENT",
+          fare_amount: "2500.00",
+          hold_expires_at: new Date(now + 5 * 60 * 1000),
+        })
+      );
+
+      // 4. Search - should show available_capacity: 2
+      const res1 = await request(app)
+        .get("/departures/search")
+        .set("Authorization", `Bearer ${passengerToken}`)
+        .query({
+          routeId: testRoute.id,
+          mode: "POOLED",
+          when: "immediate",
+        });
+
+      expect(res1.status).toBe(200);
+      expect(res1.body.empty).toBe(false);
+      expect(res1.body.results).toHaveLength(1);
+      expect(res1.body.results[0].id).toBe(dep.id);
+      expect(res1.body.results[0].capacity).toBe(4);
+      expect(res1.body.results[0].available_capacity).toBe(2);
+      expect(res1.body.results[0].availableCapacity).toBe(2);
+
+      // 5. Update pending reservation's hold_expires_at into past (expired hold, still PENDING_PAYMENT, no sweep)
+      await reservationRepo.update(
+        { id: pendingReservation.id },
+        { hold_expires_at: new Date(Date.now() - 5000) }
+      );
+
+      // 6. Search again - live query immediately sees available_capacity: 3 with no sweep
+      const res2 = await request(app)
+        .get("/departures/search")
+        .set("Authorization", `Bearer ${passengerToken}`)
+        .query({
+          routeId: testRoute.id,
+          mode: "POOLED",
+          when: "immediate",
+        });
+
+      expect(res2.status).toBe(200);
+      expect(res2.body.empty).toBe(false);
+      expect(res2.body.results).toHaveLength(1);
+      expect(res2.body.results[0].id).toBe(dep.id);
+      expect(res2.body.results[0].available_capacity).toBe(3);
+      expect(res2.body.results[0].availableCapacity).toBe(3);
+    });
   });
 });

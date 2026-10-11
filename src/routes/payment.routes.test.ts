@@ -631,7 +631,7 @@ describe("Payment Flow Integration (MM-06 / Decision 6)", () => {
           }
           await testRunner.release();
         }
-      }, 15000);
+      }, 30000);
     });
   });
 

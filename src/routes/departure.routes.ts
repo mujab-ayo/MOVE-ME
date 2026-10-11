@@ -239,6 +239,22 @@ router.get(
         .andWhere("departure.mode = :mode", { mode })
         .andWhere("departure.status = :status", { status: "SCHEDULED" });
 
+      // Live available_capacity calculation:
+      // available_capacity = capacity - count of reservations where status = 'CONFIRMED' OR (status = 'PENDING_PAYMENT' AND hold_expires_at > now())
+      const activeReservationsSubquery = `COALESCE((
+        SELECT count(*)::int
+        FROM reservations r
+        WHERE r.departure_id = departure.id
+          AND (r.status = 'CONFIRMED'
+               OR (r.status = 'PENDING_PAYMENT' AND r.hold_expires_at > now()))
+      ), 0)`;
+
+      const availableCapacityExpr = `(departure.capacity - ${activeReservationsSubquery})`;
+
+      qb.addSelect(availableCapacityExpr, "available_capacity");
+      // Exclude departures with available_capacity <= 0 (a full departure is not eligible)
+      qb.andWhere(`${availableCapacityExpr} > 0`);
+
       if (when === "immediate") {
         const now = new Date();
         const windowEnd = new Date(now.getTime() + 15 * 60 * 1000);
@@ -257,11 +273,23 @@ router.get(
         qb.take(20);
       }
 
-      const departures = await qb.getMany();
+      const { entities: departures, raw } = await qb.getRawAndEntities();
 
-      const results = departures.map((dep) => {
-        // TODO: available_capacity needs a live count against the reservations table, which doesn't exist until Week 4's booking prompt — for now just return the departure's raw capacity.
-        const availableCapacity = dep.capacity;
+      const availableCapacityMap = new Map<string, number>();
+      for (const r of raw) {
+        const depId = r.departure_id || r.id;
+        const rawAvail = r.available_capacity ?? r.availableCapacity;
+        if (depId && rawAvail !== undefined) {
+          availableCapacityMap.set(depId, parseInt(rawAvail, 10));
+        }
+      }
+
+      const results = departures.map((dep, idx) => {
+        const availableCapacity =
+          availableCapacityMap.get(dep.id) ??
+          (raw[idx] && (raw[idx].available_capacity ?? raw[idx].availableCapacity) !== undefined
+            ? parseInt(raw[idx].available_capacity ?? raw[idx].availableCapacity, 10)
+            : dep.capacity);
 
         const driverName =
           (dep.driver as any)?.full_name ||

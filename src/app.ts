@@ -7,6 +7,7 @@ import adminRouter from "./routes/admin.routes";
 import departureRouter from "./routes/departure.routes";
 import reservationRouter from "./routes/reservation.routes";
 import paymentRouter from "./routes/payment.routes";
+import passengerRouter from "./routes/passenger.routes";
 import { swaggerSpec } from "./swagger";
 
 const app = express();
@@ -36,6 +37,7 @@ app.use("/admin", adminRouter);
 app.use("/departures", departureRouter);
 app.use("/reservations", reservationRouter);
 app.use("/payments", paymentRouter);
+app.use("/passengers", passengerRouter);
 
 // Swagger UI documentation
 const swaggerUiOptions = {

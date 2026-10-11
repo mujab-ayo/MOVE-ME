@@ -49,6 +49,10 @@ const options: swaggerJsdoc.Options = {
         name: "Payments",
         description: "Simulated payment provider integration",
       },
+      {
+        name: "Passengers",
+        description: "Passenger reservation history and profile",
+      },
     ],
     components: {
       securitySchemes: {

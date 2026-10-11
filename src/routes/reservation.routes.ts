@@ -102,8 +102,14 @@ router.post(
 
       if (reservation.status !== "PENDING_PAYMENT" || holdExpired) {
         // Opportunistically materialize EXPIRED status if it was pending but time elapsed
+        // Guarded write: never overwrite if confirmed by callback concurrently
         if (reservation.status === "PENDING_PAYMENT" && holdExpired) {
-          await reservationRepo.update({ id }, { status: "EXPIRED" });
+          await AppDataSource.query(
+            `UPDATE reservations
+             SET status = 'EXPIRED'
+             WHERE id = $1 AND status = 'PENDING_PAYMENT' AND hold_expires_at <= now();`,
+            [id]
+          );
         }
 
         res.status(409).json({
@@ -147,7 +153,7 @@ router.post(
  * /reservations/{id}:
  *   get:
  *     summary: Get reservation details
- *     description: Retrieves details of a reservation. Opportunistically marks it EXPIRED if hold elapsed.
+ *     description: Retrieves details of a reservation. Accessible only by the passenger who owns it or the driver who owns the departure. Opportunistically updates any PENDING_PAYMENT reservation whose hold elapsed to EXPIRED before responding.
  *     tags:
  *       - Reservations
  *     security:
@@ -166,11 +172,13 @@ router.post(
  *       400:
  *         description: Invalid reservation ID format
  *       401:
- *         description: Authentication required
+ *         description: Authentication required or invalid token
  *       403:
- *         description: Forbidden
+ *         description: Forbidden - not your reservation, not your departure, or insufficient permissions
  *       404:
  *         description: Reservation not found
+ *       500:
+ *         description: Internal server error
  */
 router.get(
   "/:id",
@@ -186,7 +194,7 @@ router.get(
     const reservationRepo = AppDataSource.getRepository(Reservation);
 
     try {
-      const reservation = await reservationRepo.findOne({
+      let reservation = await reservationRepo.findOne({
         where: { id },
         relations: { departure: true, payments: true },
       });
@@ -196,25 +204,52 @@ router.get(
         return;
       }
 
+      // Ownership scoping pattern (Week 2 rubric competency adapted for reservations):
+      // Allowed if and only if caller is the PASSENGER who owns the reservation OR the DRIVER who owns the departure.
       const user = req.user!;
-      if (user.role === "PASSENGER" && reservation.passenger_id !== user.id) {
-        res.status(403).json({ error: "Forbidden: not your reservation" });
+      const isPassengerOwner = user.role === "PASSENGER" && reservation.passenger_id === user.id;
+      const isDepartureDriver = user.role === "DRIVER" && reservation.departure?.driver_id === user.id;
+
+      if (!isPassengerOwner && !isDepartureDriver) {
+        if (user.role === "PASSENGER") {
+          res.status(403).json({ error: "Forbidden: not your reservation" });
+          return;
+        }
+        if (user.role === "DRIVER") {
+          res.status(403).json({ error: "Forbidden: not your departure" });
+          return;
+        }
+        res.status(403).json({ error: "Forbidden: insufficient permissions" });
         return;
       }
 
-      if (user.role === "DRIVER" && reservation.departure?.driver_id !== user.id) {
-        res.status(403).json({ error: "Forbidden: not your departure" });
-        return;
-      }
-
-      // Decision 6b: opportunistically flip status to EXPIRED if hold expired
+      // Decision 6b: opportunistically flip status to EXPIRED before responding if hold expired
+      // Guarded write: only flip if status is still PENDING_PAYMENT and hold elapsed.
+      // If 0 rows affected (e.g. callback confirmed concurrently), re-read from DB and return actual DB state.
       const now = new Date();
       if (
         reservation.status === "PENDING_PAYMENT" &&
         now >= new Date(reservation.hold_expires_at)
       ) {
-        reservation.status = "EXPIRED";
-        await reservationRepo.update({ id }, { status: "EXPIRED" });
+        const updateResult = await AppDataSource.query(
+          `UPDATE reservations
+           SET status = 'EXPIRED'
+           WHERE id = $1 AND status = 'PENDING_PAYMENT' AND hold_expires_at <= now()
+           RETURNING id;`,
+          [id]
+        );
+
+        if (updateResult.length > 0) {
+          reservation.status = "EXPIRED";
+        } else {
+          const refreshed = await reservationRepo.findOne({
+            where: { id },
+            relations: { departure: true, payments: true },
+          });
+          if (refreshed) {
+            reservation = refreshed;
+          }
+        }
       }
 
       res.status(200).json(reservation);
