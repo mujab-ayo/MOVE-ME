@@ -22,4 +22,7 @@ export const AppDataSource = new DataSource({
   entities: [User, Vehicle, Route, Departure, Reservation, Payment],
   migrations: [path.join(__dirname, "migrations/**/*.{ts,js}")],
   subscribers: [],
+  extra: {
+    max: process.env.NODE_ENV === "test" ? 20 : 10,
+  },
 });
