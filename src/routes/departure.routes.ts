@@ -758,5 +758,396 @@ router.post(
   }
 );
 
+/**
+ * @openapi
+ * /departures/{id}/arrive:
+ *   post:
+ *     summary: Mark departure arrival
+ *     description: Driver marks vehicle arrival at pickup point. Departure status must be SCHEDULED. Sets status to ARRIVED and arrived_at timestamp. Driver can only have one active trip in progress or arrived.
+ *     tags:
+ *       - Departures
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Departure UUID
+ *     responses:
+ *       200:
+ *         description: Arrival marked successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 departureId:
+ *                   type: string
+ *                   format: uuid
+ *                 status:
+ *                   type: string
+ *                   example: ARRIVED
+ *                 arrivedAt:
+ *                   type: string
+ *                   format: date-time
+ *       400:
+ *         description: Invalid departure ID format
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Forbidden (not a driver or not the departure owner)
+ *       404:
+ *         description: Departure not found
+ *       409:
+ *         description: Invalid state transition or active trip already in progress
+ */
+router.post(
+  "/:id/arrive",
+  requireAuth,
+  requireRole("DRIVER"),
+  async (req: Request, res: Response): Promise<void> => {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+    if (!z.string().uuid().safeParse(id).success) {
+      res.status(400).json({ error: "Invalid departure ID format" });
+      return;
+    }
+
+    const driverId = req.user!.id;
+    const queryRunner = AppDataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const departures = await queryRunner.query(
+        `SELECT id, driver_id, status, arrived_at
+         FROM departures
+         WHERE id = $1
+         FOR UPDATE;`,
+        [id]
+      );
+
+      if (departures.length === 0) {
+        await queryRunner.rollbackTransaction();
+        res.status(404).json({ error: "Departure not found" });
+        return;
+      }
+
+      const departure = departures[0];
+
+      if (departure.driver_id !== driverId) {
+        await queryRunner.rollbackTransaction();
+        res.status(403).json({ error: "Forbidden: you do not own this departure" });
+        return;
+      }
+
+      if (departure.status !== "SCHEDULED") {
+        await queryRunner.rollbackTransaction();
+        res.status(409).json({
+          error: `Cannot arrive: departure status is ${departure.status}, expected SCHEDULED`,
+        });
+        return;
+      }
+
+      const updateResult = await queryRunner.query(
+        `UPDATE departures
+         SET status = 'ARRIVED', arrived_at = now()
+         WHERE id = $1
+         RETURNING id, status, arrived_at;`,
+        [id]
+      );
+
+      await queryRunner.commitTransaction();
+
+      const row = Array.isArray(updateResult) && Array.isArray(updateResult[0])
+        ? updateResult[0][0]
+        : (Array.isArray(updateResult) ? updateResult[0] : updateResult);
+
+      res.status(200).json({
+        departureId: row?.id || id,
+        status: row?.status || "ARRIVED",
+        arrivedAt: row?.arrived_at,
+      });
+    } catch (err: any) {
+      if (queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
+
+      if (err.code === "23505") {
+        res.status(409).json({ error: "You already have a trip in progress" });
+        return;
+      }
+
+      res.status(500).json({ error: "Internal server error" });
+    } finally {
+      await queryRunner.release();
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /departures/{id}/depart:
+ *   post:
+ *     summary: Mark departure underway
+ *     description: Driver marks departure underway (trip start). Departure status must be ARRIVED. Sets status to IN_PROGRESS and departed_at timestamp.
+ *     tags:
+ *       - Departures
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Departure UUID
+ *     responses:
+ *       200:
+ *         description: Trip marked in progress successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 departureId:
+ *                   type: string
+ *                   format: uuid
+ *                 status:
+ *                   type: string
+ *                   example: IN_PROGRESS
+ *                 departedAt:
+ *                   type: string
+ *                   format: date-time
+ *       400:
+ *         description: Invalid departure ID format
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Forbidden (not a driver or not the departure owner)
+ *       404:
+ *         description: Departure not found
+ *       409:
+ *         description: Invalid state transition
+ */
+router.post(
+  "/:id/depart",
+  requireAuth,
+  requireRole("DRIVER"),
+  async (req: Request, res: Response): Promise<void> => {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+    if (!z.string().uuid().safeParse(id).success) {
+      res.status(400).json({ error: "Invalid departure ID format" });
+      return;
+    }
+
+    const driverId = req.user!.id;
+    const queryRunner = AppDataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const departures = await queryRunner.query(
+        `SELECT id, driver_id, status, departed_at
+         FROM departures
+         WHERE id = $1
+         FOR UPDATE;`,
+        [id]
+      );
+
+      if (departures.length === 0) {
+        await queryRunner.rollbackTransaction();
+        res.status(404).json({ error: "Departure not found" });
+        return;
+      }
+
+      const departure = departures[0];
+
+      if (departure.driver_id !== driverId) {
+        await queryRunner.rollbackTransaction();
+        res.status(403).json({ error: "Forbidden: you do not own this departure" });
+        return;
+      }
+
+      if (departure.status !== "ARRIVED") {
+        await queryRunner.rollbackTransaction();
+        res.status(409).json({
+          error: `Cannot depart: departure status is ${departure.status}, expected ARRIVED`,
+        });
+        return;
+      }
+
+      const updateResult = await queryRunner.query(
+        `UPDATE departures
+         SET status = 'IN_PROGRESS', departed_at = now()
+         WHERE id = $1
+         RETURNING id, status, departed_at;`,
+        [id]
+      );
+
+      await queryRunner.commitTransaction();
+
+      const row = Array.isArray(updateResult) && Array.isArray(updateResult[0])
+        ? updateResult[0][0]
+        : (Array.isArray(updateResult) ? updateResult[0] : updateResult);
+
+      res.status(200).json({
+        departureId: row?.id || id,
+        status: row?.status || "IN_PROGRESS",
+        departedAt: row?.departed_at,
+      });
+    } catch (err: any) {
+      if (queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
+
+      if (err.code === "23505") {
+        res.status(409).json({ error: "You already have a trip in progress" });
+        return;
+      }
+
+      res.status(500).json({ error: "Internal server error" });
+    } finally {
+      await queryRunner.release();
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /departures/{id}/complete:
+ *   post:
+ *     summary: Mark departure completed
+ *     description: Driver marks departure completed. Departure status must be IN_PROGRESS. Sets status to COMPLETED, completed_at timestamp, and moves all CONFIRMED reservations on this departure to COMPLETED in the same transaction.
+ *     tags:
+ *       - Departures
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Departure UUID
+ *     responses:
+ *       200:
+ *         description: Trip marked completed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 departureId:
+ *                   type: string
+ *                   format: uuid
+ *                 status:
+ *                   type: string
+ *                   example: COMPLETED
+ *                 completedAt:
+ *                   type: string
+ *                   format: date-time
+ *       400:
+ *         description: Invalid departure ID format
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Forbidden (not a driver or not the departure owner)
+ *       404:
+ *         description: Departure not found
+ *       409:
+ *         description: Invalid state transition
+ */
+router.post(
+  "/:id/complete",
+  requireAuth,
+  requireRole("DRIVER"),
+  async (req: Request, res: Response): Promise<void> => {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+    if (!z.string().uuid().safeParse(id).success) {
+      res.status(400).json({ error: "Invalid departure ID format" });
+      return;
+    }
+
+    const driverId = req.user!.id;
+    const queryRunner = AppDataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const departures = await queryRunner.query(
+        `SELECT id, driver_id, status, completed_at
+         FROM departures
+         WHERE id = $1
+         FOR UPDATE;`,
+        [id]
+      );
+
+      if (departures.length === 0) {
+        await queryRunner.rollbackTransaction();
+        res.status(404).json({ error: "Departure not found" });
+        return;
+      }
+
+      const departure = departures[0];
+
+      if (departure.driver_id !== driverId) {
+        await queryRunner.rollbackTransaction();
+        res.status(403).json({ error: "Forbidden: you do not own this departure" });
+        return;
+      }
+
+      if (departure.status !== "IN_PROGRESS") {
+        await queryRunner.rollbackTransaction();
+        res.status(409).json({
+          error: `Cannot complete: departure status is ${departure.status}, expected IN_PROGRESS`,
+        });
+        return;
+      }
+
+      const updateResult = await queryRunner.query(
+        `UPDATE departures
+         SET status = 'COMPLETED', completed_at = now()
+         WHERE id = $1
+         RETURNING id, status, completed_at;`,
+        [id]
+      );
+
+      await queryRunner.query(
+        `UPDATE reservations
+         SET status = 'COMPLETED'
+         WHERE departure_id = $1 AND status = 'CONFIRMED';`,
+        [id]
+      );
+
+      await queryRunner.commitTransaction();
+
+      const row = Array.isArray(updateResult) && Array.isArray(updateResult[0])
+        ? updateResult[0][0]
+        : (Array.isArray(updateResult) ? updateResult[0] : updateResult);
+
+      res.status(200).json({
+        departureId: row?.id || id,
+        status: row?.status || "COMPLETED",
+        completedAt: row?.completed_at,
+      });
+    } catch (_err) {
+      if (queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
+      res.status(500).json({ error: "Internal server error" });
+    } finally {
+      await queryRunner.release();
+    }
+  }
+);
+
 export default router;
 
