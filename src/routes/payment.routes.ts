@@ -43,7 +43,7 @@ const callbackSchema = z.object({
  *                 type: string
  *     responses:
  *       200:
- *         description: Callback processed or safely ignored as no-op
+ *         description: Callback processed (SUCCEEDED/FAILED) or safely ignored as no-op (IGNORED for late or duplicate callbacks)
  *         content:
  *           application/json:
  *             schema:
@@ -51,10 +51,20 @@ const callbackSchema = z.object({
  *               properties:
  *                 status:
  *                   type: string
+ *                   enum:
+ *                     - SUCCEEDED
+ *                     - FAILED
+ *                     - IGNORED
  *                   example: SUCCEEDED
  *                 reservationStatus:
  *                   type: string
  *                   example: CONFIRMED
+ *                 message:
+ *                   type: string
+ *                   example: Late callback on expired reservation - payment marked EXPIRED
+ *                 paymentStatus:
+ *                   type: string
+ *                   example: EXPIRED
  *       400:
  *         description: Invalid payment ID format or payload
  *       404:

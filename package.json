@@ -16,6 +16,7 @@
     "migrate": "typeorm-ts-node-commonjs migration:run -d src/data-source.ts",
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/data-source.ts",
     "seed": "ts-node-dev --transpile-only src/seed/routes.ts",
+    "seed:demo": "ts-node-dev --transpile-only src/seed/demo.ts",
     "seed:prod": "node dist/seed/routes.js",
     "test": "cross-env NODE_ENV=test jest"
   },

@@ -42,16 +42,12 @@ const options: swaggerJsdoc.Options = {
         description: "Departure publishing and ride discovery",
       },
       {
-        name: "Reservations",
-        description: "Seat reservations and payment initiation",
+        name: "Bookings",
+        description: "Seat reservations and passenger booking lifecycle",
       },
       {
         name: "Payments",
-        description: "Simulated payment provider integration",
-      },
-      {
-        name: "Passengers",
-        description: "Passenger reservation history and profile",
+        description: "Simulated payment provider integration and callback settlement",
       },
     ],
     components: {

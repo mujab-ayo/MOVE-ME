@@ -15,7 +15,7 @@ const router = Router();
  *     summary: Initiate simulated payment
  *     description: Creates a PENDING payment for a reservation if the hold is still valid.
  *     tags:
- *       - Reservations
+ *       - Payments
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -155,7 +155,7 @@ router.post(
  *     summary: Get reservation details
  *     description: Retrieves details of a reservation. Accessible only by the passenger who owns it or the driver who owns the departure. Opportunistically updates any PENDING_PAYMENT reservation whose hold elapsed to EXPIRED before responding.
  *     tags:
- *       - Reservations
+ *       - Bookings
  *     security:
  *       - bearerAuth: []
  *     parameters:

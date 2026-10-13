@@ -12,7 +12,7 @@ const router = Router();
  *     summary: List caller's own reservations
  *     description: Retrieves all reservations belonging to the authenticated passenger, ordered by created_at descending. Opportunistically updates any stale PENDING_PAYMENT reservations whose hold has elapsed to EXPIRED before responding.
  *     tags:
- *       - Passengers
+ *       - Bookings
  *     security:
  *       - bearerAuth: []
  *     responses:

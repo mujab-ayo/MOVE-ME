@@ -37,15 +37,16 @@ describe("GET /docs", () => {
     expect(res.headers["content-type"]).toContain("text/html");
   });
 
-  it("should return valid OpenAPI spec with 4 tags and documented routes at /docs.json", async () => {
+  it("should return valid OpenAPI spec with 6 tags and documented routes at /docs.json", async () => {
     const res = await request(app).get("/docs.json");
     expect(res.status).toBe(200);
     expect(res.body.openapi).toMatch(/^3\./);
 
     // Verify tag definitions
     const tagNames = res.body.tags.map((t: any) => t.name);
+    expect(tagNames).toHaveLength(6);
     expect(tagNames).toEqual(
-      expect.arrayContaining(["Auth", "Vehicles", "Admin", "Departures"])
+      expect.arrayContaining(["Auth", "Vehicles", "Admin", "Departures", "Bookings", "Payments"])
     );
 
     // Verify routes exist in paths
@@ -74,6 +75,21 @@ describe("GET /docs", () => {
 
     expect(paths["/departures/search"]).toBeDefined();
     expect(paths["/departures/search"].get.tags).toContain("Departures");
+
+    expect(paths["/departures/{id}/reservations"]).toBeDefined();
+    expect(paths["/departures/{id}/reservations"].post.tags).toContain("Bookings");
+
+    expect(paths["/reservations/{id}"]).toBeDefined();
+    expect(paths["/reservations/{id}"].get.tags).toContain("Bookings");
+
+    expect(paths["/passengers/me/reservations"]).toBeDefined();
+    expect(paths["/passengers/me/reservations"].get.tags).toContain("Bookings");
+
+    expect(paths["/reservations/{id}/payments"]).toBeDefined();
+    expect(paths["/reservations/{id}/payments"].post.tags).toContain("Payments");
+
+    expect(paths["/payments/{id}/callback"]).toBeDefined();
+    expect(paths["/payments/{id}/callback"].post.tags).toContain("Payments");
   });
 });
 

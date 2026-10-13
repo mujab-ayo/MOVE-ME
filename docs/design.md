@@ -22,7 +22,8 @@ These six decisions are load-bearing for everything below, so I'm resolving them
 The spec says passengers choose "immediate or scheduled travel" but doesn't define the cutoff. This is a **search-mode filter**, not a stored property on the departure — a given departure can appear in an immediate search now and would have appeared in a scheduled search an hour ago.
 
 - **Confirmed:** `immediate` = eligible departures where `now() ≤ departure_time ≤ now() + 15 minutes` (15 min is a config constant, `IMMEDIATE_WINDOW_MINUTES`).
-- **Confirmed:** `scheduled` = passenger supplies an explicit target `datetime`; results are eligible departures at/after that datetime, ordered by proximity, with no upper bound (or a generous one like +24h) unless you want pagination in v1 (I'd skip pagination for now — flag if you disagree).
+- **Confirmed:** `scheduled` = passenger supplies an explicit target `datetime`; results are eligible departures at/after that datetime, ordered by proximity, with no upper bound, no pagination in v1.
+- **Confirmed, fixed after manual testing surfaced a real gap in Week 2:** the original wording (`departure_time >= datetime`) has no floor at `now()`. A `scheduled` search with a `datetime` in the past returned departures that had already happened — confirmed against the real build, not just theoretical. MM-03 says "upcoming eligible departures," and a passed departure isn't upcoming regardless of what `datetime` was requested. Fixed by ANDing an unconditional `departure_time > now()` onto the scheduled query, in addition to `>= datetime`: `WHERE departure_time >= $datetime AND departure_time > now()`. This only changes behavior when `datetime` is in the past; a future `datetime` is unaffected.
 - Both modes share one query path (`GET /departures/search`) with a `when` + optional `datetime` parameter — no separate "immediate" entity or table.
 
 ### 3. Booking eligibility at/after departure time or once a trip starts
@@ -445,6 +446,17 @@ CREATE TABLE notifications (
 );
 ```
 
+### Lock-ordering rule (added in Week 3)
+
+Every transaction that changes reservation or payment state must take its row locks in this order: **departure, then payment, then reservation.** The booking endpoint locks the departure first, so any endpoint that can change what counts toward that departure's capacity has to lock the same row first. Otherwise the two don't serialize.
+
+Found in Week 3 by reproducing it against a real Postgres. The payment callback originally locked only the payment and reservation. A callback that began just before a hold expired could confirm the reservation while a booking, which no longer counted the expired hold, took the same seat. The result was 2 seats in use on a capacity-1 departure. The fix:
+
+- The callback reads the payment and reservation without a lock to find `departure_id`, locks the departure, then locks the payment and reservation and re-checks their statuses under the locks.
+- Hold validity inside the callback uses `clock_timestamp()`, not `now()`. In Postgres, `now()` is the transaction's start time, so a callback that waited on a lock would still treat an expired hold as valid.
+- Expiry flips outside those transactions are conditional writes (`... WHERE status = 'PENDING_PAYMENT' AND hold_expires_at <= now()`) so they can never overwrite `CONFIRMED`.
+- Any future endpoint (Week 4's cancellation flows especially) must follow the same order or it can deadlock against the callback.
+
 ### The capacity-guard transaction (application logic, not a migration, but the core of MM-04/05/06)
 
 This single transaction — used identically for solo (`capacity=1`) and pooled — is what the concurrency spike should exercise:
@@ -513,7 +525,7 @@ Roles: `PUBLIC` (no auth), `PASSENGER`, `DRIVER`, `ADMIN`. All non-public routes
 | GET | `/reservations/:id` | PASSENGER (own), DRIVER (own departure) | — | `200 Reservation` | 401, 403, 404 |
 | POST | `/reservations/:id/cancel` | PASSENGER | — | `200 {refund:{simulated:true, amount}}` | 401, 403, 404, 409 (not CONFIRMED, or trip started) |
 | POST | `/reservations/:id/payments` | PASSENGER | — | `201 {paymentId, status:'PENDING'}` | 400, 401, 403, 404, 409 (hold already expired) |
-| POST | `/payments/:id/callback` | internal (simulated PSP) | `{outcome:'SUCCESS'\|'FAILURE', idempotencyKey}` | `200 {status}` | 400, 404, 409 (reservation expired → ignored, or duplicate SUCCEEDED) |
+| POST | `/payments/:id/callback` | internal (simulated PSP) | `{outcome:'SUCCESS'\|'FAILURE'}` | `200 {status:'SUCCEEDED'\|'FAILED', reservationStatus}`, or `200 {status:'IGNORED', paymentStatus}` for a late callback on an expired hold, an already-resolved payment, or a duplicate success | 400, 404. **Late and duplicate callbacks are never errors:** a webhook provider retries on non-2xx, so ignoring them with `200 IGNORED` is the correct contract. |
 | GET | `/passengers/me/notifications` | PASSENGER | — | `200 [Notification]` | 401 |
 | PATCH | `/notifications/:id/read` | PASSENGER | — | `200 {id, readAt}` | 401, 404 |
 
@@ -525,13 +537,15 @@ Roles: `PUBLIC` (no auth), `PASSENGER`, `DRIVER`, `ADMIN`. All non-public routes
 
 Solo project, so "ownership" in this section's title means task sequencing, not assignment across people. Note this is a different sense of the word from the "ownership" **competency** your Week 2 rubric assesses (that one means data ownership/authorization — see the checklist below).
 
+**Realigned after Week 2 — actual pace ran ahead of the original plan.** Week 2 delivered both originally-separate "Foundations" and "Publishing + discovery" rows in a single week (MM-01, MM-02, MM-03 all complete, tested, and deployed). Everything below is shifted forward accordingly, which also opens up a genuine buffer week (5) that the original 5-row plan didn't have — used for catching up any slipped scope and closing out Prompt 6/7 gaps flagged during Week 2, rather than assumed away.
+
 | Week | Focus | Key tasks | Definition of done |
 | --- | --- | --- | --- |
-| 2 | Foundations | Point the dev environment at a Neon (hosted) Postgres via `DATABASE_URL` — no local Docker/Postgres needed; Express + TypeScript scaffold, TypeORM entities + migrations for `users/vehicles/routes/departures` incl. exclusion constraints, argon2 + JWT auth, hand-written `requireAuth`/`requireRole` middleware, Zod request-validation middleware, seed script for fixed routes, `swagger-jsdoc` bootstrap | Migrations apply cleanly against Neon; a test that inserts an overlapping departure gets a DB-level rejection; auth register/login pass Supertest; a protected route correctly rejects a wrong-role token |
-| 3 | Publishing + discovery | Vehicle CRUD, admin enable endpoint, `POST /departures` with snapshot + overlap logic, `GET /departures/search` (immediate/scheduled + no-availability state). **Optional 1–2 day concurrency spike here if not already done.** | MM-01, MM-02, MM-03 acceptance scenarios pass via Supertest, including the overlap-rejection and boundary-touch cases |
-| 4 | Booking + payment concurrency | Reservation creation using the capacity-guard transaction (identical for solo/pooled), duplicate-reservation guard, payment initiate/callback incl. lazy hold expiry, a dedicated race test (`Promise.all` of N concurrent bookings against a 1-seat departure) | MM-04, MM-05, MM-06 acceptance scenarios pass, including the concurrent-last-seat and expired-late-callback tests |
-| 5 | Trip progress + cancellation | `/arrive /depart /complete` with the single-active-trip index, passenger status/history views, passenger + driver cancellation flows incl. simulated refund and notifications | MM-07, MM-08 acceptance scenarios pass, including the delayed-active-trip-blocks-second-trip case |
-| 6 | Hardening + deploy | Full Jest/Supertest suite across all 6 acceptance scenarios, edge cases, write a `Dockerfile`, deploy (Render/Fly/Railway all build the image server-side from the `Dockerfile` — no local Docker daemon required), `swagger-jsdoc` output polish, README + demo script, presentation prep, slack for slippage | All 6 top-level acceptance scenarios pass against the deployed instance; demo script runs start-to-finish without manual DB edits |
+| 2 ✅ | Foundations + publishing + discovery | *(Done.)* Neon dev DB, Express + TypeScript scaffold, auth, vehicles, driver enablement, departure publishing with exclusion constraints, ride discovery, deployed to Render | MM-01, MM-02, MM-03 acceptance scenarios pass; 33/33 Supertest; verified end-to-end against the live deployed URL |
+| 3 ✅ | Booking + payment concurrency | Reservation creation using the capacity-guard transaction (identical for solo/pooled), duplicate-reservation guard, payment initiate/callback incl. lazy hold expiry, a dedicated race test (`Promise.all` of N concurrent bookings against a 1-seat departure) | MM-04, MM-05, MM-06 acceptance scenarios pass, including the concurrent-last-seat and expired-late-callback tests. *(Done: 87 Supertest tests; the booking race tests oversell 10/10 when `FOR UPDATE` is removed and allow exactly 1 and exactly 3 with it.)* |
+| 4 | Trip progress + cancellation | `/arrive /depart /complete` with the single-active-trip index, passenger status/history views, passenger + driver cancellation flows incl. simulated refund and notifications | MM-07, MM-08 acceptance scenarios pass, including the delayed-active-trip-blocks-second-trip case |
+| 5 | Buffer + gap closure | Catch up on any slipped Week 3/4 scope; close the Prompt 6/7 gaps flagged in Week 2 (request-body validation on vehicle/departure endpoints, an automated Supertest suite for the overlap/boundary-touch/ownership scenarios currently only proven manually); extend `swagger-jsdoc` docs to the new endpoints | All MM-01–08 acceptance scenarios pass via automated tests, not just manual Postman proof |
+| 6 | Hardening + deploy | Full Jest/Supertest suite across all 6 top-level acceptance scenarios, edge cases, deploy polish, README + demo script, presentation prep | All 6 acceptance scenarios pass against the deployed instance; demo script runs start-to-finish without manual DB edits |
 
 ### Week 2 milestone — rubric checklist
 
@@ -557,6 +571,25 @@ Mapped to this project specifically:
 **The "early shared-environment demo" item actually changes something, given your 2-day window.** It means the Week 2 scope needs to be reachable by someone other than you before the deadline — not just running on `localhost`. Given how much friction Docker has already caused this week, the fastest path is to skip Docker for this too: both Render and Railway can build and run a plain Node/Express app straight from a GitHub repo using their native Node buildpack — no `Dockerfile` required at all, just a build command (`npm install`) and a start command (`npm start`). Push the Week 2 scope to a repo, connect it to Render or Railway, point its env vars at the same Neon `DATABASE_URL`, and that single deploy satisfies "shared-environment demo" now and gives you a head start on Week 6's deploy step too.
 
 **Assumption:** given this, Docker may not be needed anywhere in the project — not just delayed to Week 6, but skippable entirely, since a native buildpack deploy covers the same job a `Dockerfile` would. Flag if you'd rather keep a `Dockerfile` around anyway (e.g. your rubric explicitly wants to see containerization) — that's still fine to do in Week 6 without touching the buildpack-based Week 2 demo.
+
+### Week 3 milestone — rubric checklist
+
+Course rubric for Week 3: **Outcome** — core functionality: solo exclusivity, pooled seat allocation, and simulated payment/expiry (MM-04–06). **Evidence** — working core endpoints, test results, payment success/failure evidence, updated API contract. **Competencies** — business rules, data integrity, simulated transactions.
+
+Nothing here needs new design work — Section 3's `reservations`/`payments` DDL and the capacity-guard transaction, and Section 4's booking/payment endpoints, were specified back in Week 1. This week is building against an already-proven pattern (the spike), not inventing a new one.
+
+| Evidence required | What satisfies it here |
+| --- | --- |
+| Working core endpoints | `POST /departures/:id/reservations`, `POST /reservations/:id/payments`, `POST /payments/:id/callback`, `GET /passengers/me/reservations`, `GET /reservations/:id` — all from Section 4's API draft. `GET /departures/search` now computes `available_capacity` live and excludes full departures. The callback's response contract was corrected to `200 IGNORED` (see Section 4). |
+| Test results | Supertest covering: solo exclusivity (second reservation on a solo departure rejected), the pooled concurrent-last-seat race (`Promise.all` of N requests against a departure with 1 seat remaining — exactly 1 succeeds), one-active-reservation-per-passenger, fare snapshot unaffected by later joiners, payment success/failure/expiry transitions, late success on an expired reservation ignored, duplicate successful payment prevented |
+| Payment success/failure evidence | Literal before/after captures (test output or a manual Postman walkthrough, same style as MM-02's overlap proof in Week 2) of a reservation moving `PENDING_PAYMENT → CONFIRMED` on success, `→ FAILED` on failure, and `→ EXPIRED` once the 5-minute hold lapses with no sweep job involved |
+| Updated API contract | Confirm Section 4's booking/payment rows are still accurate against what's actually built; extend the Week 2 `swagger-jsdoc` tags to cover these new routes under a `Bookings`/`Payments` grouping |
+
+| Competency | Where it's demonstrated |
+| --- | --- |
+| Business rules | Solo = capacity 1 enforced through the *same* transaction as pooled (no special-cased code path); one active reservation per passenger per departure via the partial unique index; fare locked at booking time, never recalculated as occupancy changes |
+| Data integrity | The capacity-guard transaction (`SELECT ... FOR UPDATE` + live `COUNT()`) — the identical pattern already proven correct in the Week 1 spike, now wired into real endpoints instead of a throwaway script |
+| Simulated transactions | The payment initiate/confirm/fail/callback flow; the 5-minute hold with lazy, sweep-free expiry (Decision 6); an idempotency key preventing a duplicate successful payment from ever being recorded twice |
 
 ### Cut order (if behind schedule)
 

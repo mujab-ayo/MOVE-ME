@@ -549,7 +549,7 @@ export const HOLD_MINUTES = parseFloat(process.env.HOLD_MINUTES || "5");
  *     summary: Create departure reservation
  *     description: Reserves a seat on a scheduled departure using the capacity-guard transaction. Holds capacity for 5 minutes (HOLD_MINUTES) in PENDING_PAYMENT status. Identical code path for SOLO and POOLED departures. Requires PASSENGER role.
  *     tags:
- *       - Departures
+ *       - Bookings
  *     security:
  *       - bearerAuth: []
  *     parameters:
