@@ -140,7 +140,7 @@ router.post(
       await queryRunner.startTransaction();
 
       const departures = await queryRunner.query(
-        `SELECT id
+        `SELECT id, status
          FROM departures
          WHERE id = $1
          FOR UPDATE;`,
@@ -152,6 +152,8 @@ router.post(
         res.status(404).json({ error: "Associated departure not found" });
         return;
       }
+
+      const departure = departures[0];
 
       // 3. Lock payment FOR UPDATE, then reservation FOR UPDATE, and re-verify their statuses under the locks
       const payments = await queryRunner.query(
@@ -199,10 +201,13 @@ router.post(
 
       const reservation = reservations[0];
 
-      // Re-verify reservation status and hold validity under the lock
+      // Re-verify reservation status, hold validity, and departure status under the locks
       const isStillPending = reservation.status === "PENDING_PAYMENT";
       const isHoldValid = reservation.is_hold_valid === true;
-      const isReservationStillValid = isStillPending && isHoldValid;
+      const isDepartureValid =
+        departure.status === "SCHEDULED" || departure.status === "ARRIVED";
+      const isReservationStillValid =
+        isStillPending && isHoldValid && isDepartureValid;
 
       if (!isReservationStillValid) {
         // Late callback on an expired or invalid reservation — treat it as a no-op (don't confirm, don't error loudly)

@@ -138,6 +138,10 @@ describe("Payment Flow Integration (MM-06 / Decision 6)", () => {
 
     await paymentRepo.createQueryBuilder().delete().execute();
     await reservationRepo.createQueryBuilder().delete().execute();
+    await AppDataSource.query(
+      `UPDATE departures SET status = 'SCHEDULED' WHERE id = $1;`,
+      [testDeparture.id]
+    );
   });
 
   describe("POST /reservations/:id/payments", () => {
@@ -343,6 +347,130 @@ describe("Payment Flow Integration (MM-06 / Decision 6)", () => {
         // Verify zero CONFIRMED reservations exist
         const confirmedCount = await reservationRepo.count({ where: { status: "CONFIRMED" } });
         expect(confirmedCount).toBe(0);
+      });
+    });
+
+    describe("Departure status validity in callback (MM-07 / Section 2 state machine)", () => {
+      it("treats callback as IGNORED and marks payment and reservation EXPIRED when departure is IN_PROGRESS", async () => {
+        const reservationRepo = AppDataSource.getRepository(Reservation);
+        const paymentRepo = AppDataSource.getRepository(Payment);
+
+        try {
+          // 1. Set departure to IN_PROGRESS directly in the database
+          await AppDataSource.query(
+            `UPDATE departures SET status = 'IN_PROGRESS' WHERE id = $1;`,
+            [testDeparture.id]
+          );
+
+          // 2. Create reservation with valid hold
+          const reservation = await reservationRepo.save(
+            reservationRepo.create({
+              departure_id: testDeparture.id,
+              passenger_id: passengerA.id,
+              status: "PENDING_PAYMENT",
+              fare_amount: "3000.00",
+              hold_expires_at: new Date(Date.now() + 15 * 60 * 1000),
+            })
+          );
+
+          // 3. Create PENDING payment
+          const payment = await paymentRepo.save(
+            paymentRepo.create({
+              reservation_id: reservation.id,
+              amount: "3000.00",
+              status: "PENDING",
+              idempotency_key: crypto.randomUUID(),
+            })
+          );
+
+          // 4. Send SUCCESS callback
+          const res = await request(app)
+            .post(`/payments/${payment.id}/callback`)
+            .send({ outcome: "SUCCESS" });
+
+          // 5. Assert: 200 IGNORED
+          expect(res.status).toBe(200);
+          expect(res.body.status).toBe("IGNORED");
+          expect(res.body.paymentStatus).toBe("EXPIRED");
+
+          // 6. DB checks: payment EXPIRED, reservation EXPIRED, never CONFIRMED
+          const dbPayment = await paymentRepo.findOne({ where: { id: payment.id } });
+          expect(dbPayment?.status).toBe("EXPIRED");
+
+          const dbReservation = await reservationRepo.findOne({ where: { id: reservation.id } });
+          expect(dbReservation?.status).toBe("EXPIRED");
+
+          const confirmedCount = await reservationRepo.count({
+            where: { id: reservation.id, status: "CONFIRMED" },
+          });
+          expect(confirmedCount).toBe(0);
+        } finally {
+          await AppDataSource.query(
+            `UPDATE departures SET status = 'SCHEDULED' WHERE id = $1;`,
+            [testDeparture.id]
+          );
+        }
+      });
+
+      it("treats callback as IGNORED and marks payment and reservation EXPIRED when departure is CANCELLED", async () => {
+        const reservationRepo = AppDataSource.getRepository(Reservation);
+        const paymentRepo = AppDataSource.getRepository(Payment);
+
+        try {
+          // 1. Set departure to CANCELLED directly in the database
+          await AppDataSource.query(
+            `UPDATE departures SET status = 'CANCELLED' WHERE id = $1;`,
+            [testDeparture.id]
+          );
+
+          // 2. Create reservation with valid hold
+          const reservation = await reservationRepo.save(
+            reservationRepo.create({
+              departure_id: testDeparture.id,
+              passenger_id: passengerA.id,
+              status: "PENDING_PAYMENT",
+              fare_amount: "3000.00",
+              hold_expires_at: new Date(Date.now() + 15 * 60 * 1000),
+            })
+          );
+
+          // 3. Create PENDING payment
+          const payment = await paymentRepo.save(
+            paymentRepo.create({
+              reservation_id: reservation.id,
+              amount: "3000.00",
+              status: "PENDING",
+              idempotency_key: crypto.randomUUID(),
+            })
+          );
+
+          // 4. Send SUCCESS callback
+          const res = await request(app)
+            .post(`/payments/${payment.id}/callback`)
+            .send({ outcome: "SUCCESS" });
+
+          // 5. Assert: 200 IGNORED
+          expect(res.status).toBe(200);
+          expect(res.body.status).toBe("IGNORED");
+          expect(res.body.paymentStatus).toBe("EXPIRED");
+
+          // 6. DB checks: payment EXPIRED, reservation EXPIRED, never CONFIRMED
+          const dbPayment = await paymentRepo.findOne({ where: { id: payment.id } });
+          expect(dbPayment?.status).toBe("EXPIRED");
+
+          const dbReservation = await reservationRepo.findOne({ where: { id: reservation.id } });
+          expect(dbReservation?.status).toBe("EXPIRED");
+
+          const confirmedCount = await reservationRepo.count({
+            where: { id: reservation.id, status: "CONFIRMED" },
+          });
+          expect(confirmedCount).toBe(0);
+        } finally {
+          await AppDataSource.query(
+            `UPDATE departures SET status = 'SCHEDULED' WHERE id = $1;`,
+            [testDeparture.id]
+          );
+        }
       });
     });
 
