@@ -68,4 +68,19 @@ export class Departure {
     default: () => "now()",
   })
   created_at!: Date;
+
+  @Column({ name: "arrived_at", type: "timestamptz", nullable: true })
+  arrived_at!: Date | null;
+
+  @Column({ name: "departed_at", type: "timestamptz", nullable: true })
+  departed_at!: Date | null;
+
+  @Column({ name: "completed_at", type: "timestamptz", nullable: true })
+  completed_at!: Date | null;
+
+  @Column({ name: "cancelled_at", type: "timestamptz", nullable: true })
+  cancelled_at!: Date | null;
+
+  @Column({ name: "cancellation_reason", type: "text", nullable: true })
+  cancellation_reason!: string | null;
 }

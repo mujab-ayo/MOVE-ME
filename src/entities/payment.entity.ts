@@ -53,4 +53,7 @@ export class Payment {
 
   @Column({ name: "completed_at", type: "timestamptz", nullable: true })
   completed_at!: Date | null;
+
+  @Column({ name: "refunded_at", type: "timestamptz", nullable: true })
+  refunded_at!: Date | null;
 }
