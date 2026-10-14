@@ -82,6 +82,9 @@ describe("GET /docs", () => {
     expect(paths["/reservations/{id}"]).toBeDefined();
     expect(paths["/reservations/{id}"].get.tags).toContain("Bookings");
 
+    expect(paths["/reservations/{id}/cancel"]).toBeDefined();
+    expect(paths["/reservations/{id}/cancel"].post.tags).toContain("Bookings");
+
     expect(paths["/passengers/me/reservations"]).toBeDefined();
     expect(paths["/passengers/me/reservations"].get.tags).toContain("Bookings");
 

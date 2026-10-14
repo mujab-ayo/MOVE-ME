@@ -259,4 +259,235 @@ router.get(
   }
 );
 
+/**
+ * @openapi
+ * /reservations/{id}/cancel:
+ *   post:
+ *     summary: Cancel a confirmed reservation
+ *     description: Passenger cancels a confirmed reservation before departure time and before trip start. Triggers simulated refund.
+ *     tags:
+ *       - Bookings
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Reservation ID
+ *     responses:
+ *       200:
+ *         description: Reservation cancelled successfully with simulated refund
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 reservationId:
+ *                   type: string
+ *                   format: uuid
+ *                 status:
+ *                   type: string
+ *                   example: CANCELLED
+ *                 refund:
+ *                   type: object
+ *                   properties:
+ *                     simulated:
+ *                       type: boolean
+ *                       example: true
+ *                     paymentId:
+ *                       type: string
+ *                       format: uuid
+ *                     amount:
+ *                       type: string
+ *                       example: "3000.00"
+ *       400:
+ *         description: Invalid reservation ID format
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Forbidden - not your reservation or not a passenger
+ *       404:
+ *         description: Reservation not found
+ *       409:
+ *         description: Conflict - reservation not confirmed, departure time passed, or trip already in progress
+ *       500:
+ *         description: Internal server error
+ */
+router.post(
+  "/:id/cancel",
+  requireAuth,
+  requireRole("PASSENGER"),
+  async (req: Request, res: Response): Promise<void> => {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+    if (!z.string().uuid().safeParse(id).success) {
+      res.status(400).json({ error: "Invalid reservation ID format" });
+      return;
+    }
+
+    const passengerId = req.user!.id;
+    const queryRunner = AppDataSource.createQueryRunner();
+    await queryRunner.connect();
+
+    try {
+      // 1. Read the reservation without a lock to find departure_id
+      const reservationsPrelim = await queryRunner.query(
+        `SELECT id, departure_id, passenger_id, status, fare_amount
+         FROM reservations
+         WHERE id = $1;`,
+        [id]
+      );
+
+      if (reservationsPrelim.length === 0) {
+        res.status(404).json({ error: "Reservation not found" });
+        return;
+      }
+
+      const reservationPrelim = reservationsPrelim[0];
+
+      if (reservationPrelim.passenger_id !== passengerId) {
+        res.status(403).json({ error: "Forbidden: not your reservation" });
+        return;
+      }
+
+      const departureId = reservationPrelim.departure_id;
+
+      // 2. BEGIN
+      await queryRunner.startTransaction();
+
+      // 3. SELECT the departure FOR UPDATE
+      const departures = await queryRunner.query(
+        `SELECT id, status, departure_time
+         FROM departures
+         WHERE id = $1
+         FOR UPDATE;`,
+        [departureId]
+      );
+
+      if (departures.length === 0) {
+        await queryRunner.rollbackTransaction();
+        res.status(404).json({ error: "Associated departure not found" });
+        return;
+      }
+
+      const departure = departures[0];
+
+      // 4. Lock reservation's payment rows FOR UPDATE
+      await queryRunner.query(
+        `SELECT id, status, amount
+         FROM payments
+         WHERE reservation_id = $1
+         FOR UPDATE;`,
+        [id]
+      );
+
+      // 5. Lock the reservation FOR UPDATE and read current status under lock
+      const lockedReservations = await queryRunner.query(
+        `SELECT id, status
+         FROM reservations
+         WHERE id = $1
+         FOR UPDATE;`,
+        [id]
+      );
+
+      if (lockedReservations.length === 0) {
+        await queryRunner.rollbackTransaction();
+        res.status(404).json({ error: "Reservation not found" });
+        return;
+      }
+
+      const lockedReservation = lockedReservations[0];
+
+      // After all locks are held, evaluate clock_timestamp() so wait time doesn't make it stale
+      const timeCheckResult = await queryRunner.query(
+        `SELECT (departure_time > clock_timestamp()) AS is_before_departure_time
+         FROM departures
+         WHERE id = $1;`,
+        [departureId]
+      );
+      const isBeforeDepartureTime = timeCheckResult[0]?.is_before_departure_time === true;
+
+      // 6. Re-verify under the locks:
+      // - The reservation must be CONFIRMED, else 409 ("Only a confirmed reservation can be cancelled")
+      if (lockedReservation.status !== "CONFIRMED") {
+        await queryRunner.rollbackTransaction();
+        res.status(409).json({ error: "Only a confirmed reservation can be cancelled" });
+        return;
+      }
+
+      // - The current time (clock_timestamp()) must be before the departure's departure_time,
+      //   AND the departure status must be SCHEDULED or ARRIVED (the trip has not started), else 409.
+      const isTripNotStarted =
+        departure.status === "SCHEDULED" || departure.status === "ARRIVED";
+
+      if (!isBeforeDepartureTime || !isTripNotStarted) {
+        await queryRunner.rollbackTransaction();
+        res.status(409).json({
+          error: "Cannot cancel reservation: departure time has passed or trip is already in progress",
+        });
+        return;
+      }
+
+      // 7. Mutations in the same transaction:
+      // - reservation: status = 'CANCELLED', cancelled_at = now(), cancellation_reason = 'PASSENGER_CANCELLED'
+      const updateReservationResult = await queryRunner.query(
+        `UPDATE reservations
+         SET status = 'CANCELLED', cancelled_at = now(), cancellation_reason = 'PASSENGER_CANCELLED'
+         WHERE id = $1 AND status = 'CONFIRMED'
+         RETURNING id, status, cancelled_at, cancellation_reason;`,
+        [id]
+      );
+
+      const reservationRows =
+        Array.isArray(updateReservationResult) && Array.isArray(updateReservationResult[0])
+          ? updateReservationResult[0]
+          : (Array.isArray(updateReservationResult) ? updateReservationResult : []);
+
+      if (reservationRows.length === 0) {
+        await queryRunner.rollbackTransaction();
+        res.status(409).json({ error: "Only a confirmed reservation can be cancelled" });
+        return;
+      }
+
+      // - If the reservation has a SUCCEEDED payment:
+      //   UPDATE payments SET status = 'REFUNDED', refunded_at = now() WHERE reservation_id = $1 AND status = 'SUCCEEDED' RETURNING id, amount. Exactly one refund.
+      const updatePaymentResult = await queryRunner.query(
+        `UPDATE payments
+         SET status = 'REFUNDED', refunded_at = now()
+         WHERE reservation_id = $1 AND status = 'SUCCEEDED'
+         RETURNING id, amount;`,
+        [id]
+      );
+
+      await queryRunner.commitTransaction();
+
+      const refundRows =
+        Array.isArray(updatePaymentResult) && Array.isArray(updatePaymentResult[0])
+          ? updatePaymentResult[0]
+          : (Array.isArray(updatePaymentResult) ? updatePaymentResult : []);
+      const refundRow = refundRows[0];
+
+      res.status(200).json({
+        reservationId: id,
+        status: "CANCELLED",
+        refund: {
+          simulated: true,
+          paymentId: refundRow?.id ?? null,
+          amount: refundRow?.amount ?? reservationPrelim.fare_amount,
+        },
+      });
+    } catch (err: any) {
+      if (queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
+      res.status(500).json({ error: "Internal server error" });
+    } finally {
+      await queryRunner.release();
+    }
+  }
+);
+
 export default router;
