@@ -76,6 +76,9 @@ describe("GET /docs", () => {
     expect(paths["/departures/search"]).toBeDefined();
     expect(paths["/departures/search"].get.tags).toContain("Departures");
 
+    expect(paths["/departures/{id}/cancel"]).toBeDefined();
+    expect(paths["/departures/{id}/cancel"].post.tags).toContain("Departures");
+
     expect(paths["/departures/{id}/reservations"]).toBeDefined();
     expect(paths["/departures/{id}/reservations"].post.tags).toContain("Bookings");
 

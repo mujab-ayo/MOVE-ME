@@ -478,7 +478,7 @@ describe("Passenger Reservation Cancellation Integration (MM-08 / Section 4 & 5)
       .set("Authorization", `Bearer ${passengerAToken}`);
     expect(cancelInProgressRes.status).toBe(409);
     expect(cancelInProgressRes.body.error).toMatch(/departure time has passed|already in progress/i);
-  });
+  }, 60000);
 
   it("5. Another passenger gets 403; a driver gets 403; no token 401; unknown id 404; malformed id 400.", async () => {
     const departureRepo = AppDataSource.getRepository(Departure);

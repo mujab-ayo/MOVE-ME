@@ -1149,5 +1149,249 @@ router.post(
   }
 );
 
+/**
+ * @openapi
+ * /departures/{id}/cancel:
+ *   post:
+ *     summary: Cancel departure
+ *     description: Driver cancels a scheduled or arrived departure. Cancels all active reservations with cancellation_reason DEPARTURE_CANCELLED, marks SUCCEEDED payments as REFUNDED, marks PENDING payments as EXPIRED, generates passenger notifications, and frees the driver and vehicle time slots.
+ *     tags:
+ *       - Departures
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Departure UUID
+ *     responses:
+ *       200:
+ *         description: Departure cancelled successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 departureId:
+ *                   type: string
+ *                   format: uuid
+ *                 status:
+ *                   type: string
+ *                   example: CANCELLED
+ *                 cancelledReservations:
+ *                   type: integer
+ *                   example: 3
+ *                 refunds:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       reservationId:
+ *                         type: string
+ *                         format: uuid
+ *                       amount:
+ *                         type: string
+ *                         example: "3000.00"
+ *       400:
+ *         description: Invalid departure ID format
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Forbidden (not driver or not departure owner)
+ *       404:
+ *         description: Departure not found
+ *       409:
+ *         description: Invalid state transition
+ *       500:
+ *         description: Internal server error
+ */
+router.post(
+  "/:id/cancel",
+  requireAuth,
+  requireRole("DRIVER"),
+  async (req: Request, res: Response): Promise<void> => {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+    if (!z.string().uuid().safeParse(id).success) {
+      res.status(400).json({ error: "Invalid departure ID format" });
+      return;
+    }
+
+    const driverId = req.user!.id;
+    const queryRunner = AppDataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // 1. SELECT the departure FOR UPDATE
+      const departures = await queryRunner.query(
+        `SELECT id, driver_id, route_id, departure_time, status
+         FROM departures
+         WHERE id = $1
+         FOR UPDATE;`,
+        [id]
+      );
+
+      if (departures.length === 0) {
+        await queryRunner.rollbackTransaction();
+        res.status(404).json({ error: "Departure not found" });
+        return;
+      }
+
+      const departure = departures[0];
+
+      if (departure.driver_id !== driverId) {
+        await queryRunner.rollbackTransaction();
+        res.status(403).json({ error: "Forbidden: you do not own this departure" });
+        return;
+      }
+
+      // Verify its status is SCHEDULED or ARRIVED, else 409
+      if (departure.status !== "SCHEDULED" && departure.status !== "ARRIVED") {
+        await queryRunner.rollbackTransaction();
+        res.status(409).json({
+          error: `Cannot cancel departure: status is ${departure.status}, expected SCHEDULED or ARRIVED`,
+        });
+        return;
+      }
+
+      // 2. Lock all payments and reservations of this departure (FOR UPDATE, ordered by id so concurrent cancellations can't deadlock).
+      // Lock payments first (per lock-ordering rule: departure, then payment, then reservation):
+      const lockedPayments = await queryRunner.query(
+        `SELECT p.id, p.reservation_id, p.amount, p.status
+         FROM payments p
+         WHERE p.reservation_id IN (
+           SELECT r.id FROM reservations r WHERE r.departure_id = $1
+         )
+         ORDER BY p.id
+         FOR UPDATE;`,
+        [id]
+      );
+
+      // Lock reservations of this departure:
+      const lockedReservations = await queryRunner.query(
+        `SELECT r.id, r.departure_id, r.passenger_id, r.status, r.fare_amount
+         FROM reservations r
+         WHERE r.departure_id = $1
+         ORDER BY r.id
+         FOR UPDATE;`,
+        [id]
+      );
+
+      // Read route info for notification payload
+      const routes = await queryRunner.query(
+        `SELECT pickup_point, dropoff_point FROM routes WHERE id = $1;`,
+        [departure.route_id]
+      );
+      const route = routes[0] || { pickup_point: "", dropoff_point: "" };
+
+      // 3. Read every status acted on from the locked rows:
+      // Departure: status = 'CANCELLED', cancelled_at = now(), cancellation_reason = 'DRIVER_CANCELLED'
+      await queryRunner.query(
+        `UPDATE departures
+         SET status = 'CANCELLED', cancelled_at = now(), cancellation_reason = 'DRIVER_CANCELLED'
+         WHERE id = $1;`,
+        [id]
+      );
+
+      // Affected reservations in PENDING_PAYMENT or CONFIRMED:
+      const affectedReservations = lockedReservations.filter(
+        (r: any) => r.status === "PENDING_PAYMENT" || r.status === "CONFIRMED"
+      );
+
+      const refunds: Array<{ reservationId: string; amount: string }> = [];
+
+      if (affectedReservations.length > 0) {
+        // Every reservation in PENDING_PAYMENT or CONFIRMED: status = 'CANCELLED', cancelled_at = now(), cancellation_reason = 'DEPARTURE_CANCELLED'
+        await queryRunner.query(
+          `UPDATE reservations
+           SET status = 'CANCELLED', cancelled_at = now(), cancellation_reason = 'DEPARTURE_CANCELLED'
+           WHERE departure_id = $1 AND status IN ('PENDING_PAYMENT', 'CONFIRMED');`,
+          [id]
+        );
+
+        // Every SUCCEEDED payment of those reservations: status = 'REFUNDED', refunded_at = now()
+        const refundUpdateResult = await queryRunner.query(
+          `UPDATE payments
+           SET status = 'REFUNDED', refunded_at = now()
+           WHERE reservation_id IN (
+             SELECT id FROM reservations
+             WHERE departure_id = $1 AND cancellation_reason = 'DEPARTURE_CANCELLED'
+           ) AND status = 'SUCCEEDED'
+           RETURNING id, reservation_id, amount;`,
+          [id]
+        );
+
+        const refundRows =
+          Array.isArray(refundUpdateResult) && Array.isArray(refundUpdateResult[0])
+            ? refundUpdateResult[0]
+            : (Array.isArray(refundUpdateResult) ? refundUpdateResult : []);
+
+        const refundMap = new Map<string, string>();
+        for (const row of refundRows) {
+          refundMap.set(row.reservation_id, row.amount);
+          refunds.push({ reservationId: row.reservation_id, amount: row.amount });
+        }
+
+        // Every PENDING payment: status = 'EXPIRED', completed_at = now()
+        await queryRunner.query(
+          `UPDATE payments
+           SET status = 'EXPIRED', completed_at = now()
+           WHERE reservation_id IN (
+             SELECT id FROM reservations
+             WHERE departure_id = $1 AND cancellation_reason = 'DEPARTURE_CANCELLED'
+           ) AND status = 'PENDING';`,
+          [id]
+        );
+
+        // One notification row per affected reservation, in the same transaction
+        for (const r of affectedReservations) {
+          const refundAmount = refundMap.get(r.id);
+          const refundPayload = refundAmount
+            ? { simulated: true, amount: refundAmount }
+            : null;
+
+          const payload = {
+            departureId: departure.id,
+            reservationId: r.id,
+            departureTime:
+              departure.departure_time instanceof Date
+                ? departure.departure_time.toISOString()
+                : new Date(departure.departure_time).toISOString(),
+            pickupPoint: route.pickup_point,
+            dropoffPoint: route.dropoff_point,
+            refund: refundPayload,
+          };
+
+          await queryRunner.query(
+            `INSERT INTO notifications (user_id, type, payload)
+             VALUES ($1, $2, $3);`,
+            [r.passenger_id, "DEPARTURE_CANCELLED", JSON.stringify(payload)]
+          );
+        }
+      }
+
+      await queryRunner.commitTransaction();
+
+      res.status(200).json({
+        departureId: id,
+        status: "CANCELLED",
+        cancelledReservations: affectedReservations.length,
+        refunds,
+      });
+    } catch (_err) {
+      if (queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
+      res.status(500).json({ error: "Internal server error" });
+    } finally {
+      await queryRunner.release();
+    }
+  }
+);
+
 export default router;
 
