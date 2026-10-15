@@ -18,7 +18,8 @@
     "seed": "ts-node-dev --transpile-only src/seed/routes.ts",
     "seed:demo": "ts-node-dev --transpile-only src/seed/demo.ts",
     "seed:prod": "node dist/seed/routes.js",
-    "test": "cross-env NODE_ENV=test jest"
+    "test": "cross-env NODE_ENV=test jest",
+    "check:docs": "node scripts/check-exception-doc.js"
   },
   "keywords": [],
   "author": "",
