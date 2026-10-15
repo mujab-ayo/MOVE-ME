@@ -62,34 +62,30 @@ router.patch(
     const passengerId = req.user!.id;
     const notificationRepo = AppDataSource.getRepository(Notification);
 
-    try {
-      const notification = await notificationRepo.findOne({ where: { id } });
+    const notification = await notificationRepo.findOne({ where: { id } });
 
-      if (!notification) {
-        res.status(404).json({ error: "Notification not found" });
-        return;
-      }
-
-      if (notification.user_id !== passengerId) {
-        res.status(403).json({ error: "Forbidden: not your notification" });
-        return;
-      }
-
-      let readAt = notification.read_at;
-      if (!readAt) {
-        readAt = new Date();
-        notification.read_at = readAt;
-        await notificationRepo.save(notification);
-      }
-
-      res.status(200).json({
-        id: notification.id,
-        readAt,
-        read_at: readAt,
-      });
-    } catch (_err) {
-      res.status(500).json({ error: "Internal server error" });
+    if (!notification) {
+      res.status(404).json({ error: "Notification not found" });
+      return;
     }
+
+    if (notification.user_id !== passengerId) {
+      res.status(403).json({ error: "Forbidden: not your notification" });
+      return;
+    }
+
+    let readAt = notification.read_at;
+    if (!readAt) {
+      readAt = new Date();
+      notification.read_at = readAt;
+      await notificationRepo.save(notification);
+    }
+
+    res.status(200).json({
+      id: notification.id,
+      readAt,
+      read_at: readAt,
+    });
   }
 );
 

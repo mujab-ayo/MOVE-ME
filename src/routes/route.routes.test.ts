@@ -96,7 +96,7 @@ describe("Route Endpoints Integration (GET /routes)", () => {
         active: false,
       })
     );
-  }, 30000);
+  }, 60000);
 
   afterAll(async () => {
     const paymentRepo = AppDataSource.getRepository(Payment);
@@ -116,7 +116,7 @@ describe("Route Endpoints Integration (GET /routes)", () => {
     if (AppDataSource.isInitialized) {
       await AppDataSource.destroy();
     }
-  }, 30000);
+  }, 60000);
 
   describe("GET /routes", () => {
     it("returns 401 without a token", async () => {

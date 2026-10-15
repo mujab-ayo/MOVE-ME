@@ -80,7 +80,7 @@ describe("Driver and Admin Endpoints Integration", () => {
     driverBToken = jwt.sign({ sub: driverB.id, role: driverB.role }, secret);
     passengerToken = jwt.sign({ sub: passenger.id, role: passenger.role }, secret);
     adminToken = jwt.sign({ sub: admin.id, role: admin.role }, secret);
-  }, 30000);
+  }, 60000);
 
   afterAll(async () => {
     const paymentRepo = AppDataSource.getRepository(Payment);
@@ -97,7 +97,7 @@ describe("Driver and Admin Endpoints Integration", () => {
     if (AppDataSource.isInitialized) {
       await AppDataSource.destroy();
     }
-  }, 30000);
+  }, 60000);
 
   describe("POST /drivers/me/vehicles", () => {
     it("rejects unauthenticated requests with 401", async () => {

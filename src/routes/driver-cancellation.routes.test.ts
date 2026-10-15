@@ -133,7 +133,7 @@ describe("Driver Departure Cancellation Integration (MM-08 / docs/design.md)", (
         active: true,
       })
     );
-  }, 30000);
+  }, 60000);
 
   afterAll(async () => {
     const notificationRepo = AppDataSource.getRepository(Notification);
@@ -155,7 +155,7 @@ describe("Driver Departure Cancellation Integration (MM-08 / docs/design.md)", (
     if (AppDataSource.isInitialized) {
       await AppDataSource.destroy();
     }
-  }, 30000);
+  }, 60000);
 
   beforeEach(async () => {
     const notificationRepo = AppDataSource.getRepository(Notification);

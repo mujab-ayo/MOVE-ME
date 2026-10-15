@@ -153,7 +153,7 @@ router.post(
         res.status(409).json({ error: "Registration identifier already registered" });
         return;
       }
-      res.status(500).json({ error: "Internal server error" });
+      throw err;
     }
   }
 );
@@ -239,19 +239,15 @@ router.get(
   requireAuth,
   requireRole("DRIVER"),
   async (req: Request, res: Response): Promise<void> => {
-    try {
-      // Data ownership requirement (Week 2 rubric competency):
-      // Filtering by driver_id = req.user.id is a strict authorization/data-ownership boundary,
-      // NOT an optional search filter. Drivers must only ever see and manage their own vehicles.
-      const vehicles = await vehicleRepository.find({
-        where: { driver_id: req.user!.id },
-        order: { created_at: "DESC" },
-      });
+    // Data ownership requirement (Week 2 rubric competency):
+    // Filtering by driver_id = req.user.id is a strict authorization/data-ownership boundary,
+    // NOT an optional search filter. Drivers must only ever see and manage their own vehicles.
+    const vehicles = await vehicleRepository.find({
+      where: { driver_id: req.user!.id },
+      order: { created_at: "DESC" },
+    });
 
-      res.status(200).json(vehicles);
-    } catch (_err) {
-      res.status(500).json({ error: "Internal server error" });
-    }
+    res.status(200).json(vehicles);
   }
 );
 
@@ -311,8 +307,7 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     const driverId = req.user!.id;
 
-    try {
-      const rows = await AppDataSource.query(
+    const rows = await AppDataSource.query(
         `SELECT
            d.id,
            d.driver_id,
@@ -401,9 +396,6 @@ router.get(
       }));
 
       res.status(200).json(departures);
-    } catch (_err) {
-      res.status(500).json({ error: "Internal server error" });
-    }
   }
 );
 

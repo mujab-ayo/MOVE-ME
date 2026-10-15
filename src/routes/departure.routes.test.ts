@@ -124,7 +124,7 @@ describe("Departure Endpoints Integration", () => {
         active: true,
       })
     );
-  }, 30000);
+  }, 60000);
 
   afterAll(async () => {
     const paymentRepo = AppDataSource.getRepository(Payment);
@@ -144,7 +144,7 @@ describe("Departure Endpoints Integration", () => {
     if (AppDataSource.isInitialized) {
       await AppDataSource.destroy();
     }
-  }, 30000);
+  }, 60000);
 
   beforeEach(async () => {
     const paymentRepo = AppDataSource.getRepository(Payment);

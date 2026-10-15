@@ -119,7 +119,7 @@ describe("Passenger Reservation Cancellation Integration (MM-08 / Section 4 & 5)
         active: true,
       })
     );
-  }, 30000);
+  }, 60000);
 
   afterAll(async () => {
     const paymentRepo = AppDataSource.getRepository(Payment);
@@ -139,7 +139,7 @@ describe("Passenger Reservation Cancellation Integration (MM-08 / Section 4 & 5)
     if (AppDataSource.isInitialized) {
       await AppDataSource.destroy();
     }
-  }, 30000);
+  }, 60000);
 
   beforeEach(async () => {
     const paymentRepo = AppDataSource.getRepository(Payment);

@@ -69,26 +69,22 @@ router.get(
   "/",
   requireAuth,
   async (_req: Request, res: Response): Promise<void> => {
-    try {
-      const routeRepository = AppDataSource.getRepository(Route);
-      const routes = await routeRepository.find({
-        where: { active: true },
-        order: { pickup_point: "ASC" },
-      });
+    const routeRepository = AppDataSource.getRepository(Route);
+    const routes = await routeRepository.find({
+      where: { active: true },
+      order: { pickup_point: "ASC" },
+    });
 
-      const response = routes.map((route) => ({
-        id: route.id,
-        pickup_point: route.pickup_point,
-        dropoff_point: route.dropoff_point,
-        base_duration_minutes: route.base_duration_minutes,
-        base_fare_solo: route.base_fare_solo,
-        base_fare_per_seat: route.base_fare_per_seat,
-      }));
+    const response = routes.map((route) => ({
+      id: route.id,
+      pickup_point: route.pickup_point,
+      dropoff_point: route.dropoff_point,
+      base_duration_minutes: route.base_duration_minutes,
+      base_fare_solo: route.base_fare_solo,
+      base_fare_per_seat: route.base_fare_per_seat,
+    }));
 
-      res.status(200).json(response);
-    } catch (_err) {
-      res.status(500).json({ error: "Internal server error" });
-    }
+    res.status(200).json(response);
   }
 );
 

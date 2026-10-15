@@ -137,7 +137,7 @@ router.post(
         res.status(409).json({ error: "Email is already registered" });
         return;
       }
-      res.status(500).json({ error: "Internal server error" });
+      throw err;
     }
   }
 );
@@ -264,7 +264,7 @@ router.post(
         res.status(409).json({ error: "Email is already registered" });
         return;
       }
-      res.status(500).json({ error: "Internal server error" });
+      throw err;
     }
   }
 );
@@ -361,8 +361,7 @@ router.post(
   async (req: Request, res: Response): Promise<void> => {
     const { email, password } = req.body;
 
-    try {
-      const user = await userRepository.findOneBy({ email });
+    const user = await userRepository.findOneBy({ email });
       if (!user) {
         res.status(401).json({ error: "Invalid email or password" });
         return;
@@ -400,9 +399,6 @@ router.post(
         accessToken,
         role: user.role,
       });
-    } catch (_err) {
-      res.status(500).json({ error: "Internal server error" });
-    }
   }
 );
 

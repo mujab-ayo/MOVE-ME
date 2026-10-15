@@ -86,7 +86,6 @@ router.post(
     if (!parseResult.success) {
       res.status(400).json({
         error: "Invalid callback payload: outcome must be 'SUCCESS' or 'FAILURE'",
-        details: parseResult.error.flatten(),
       });
       return;
     }
@@ -310,7 +309,7 @@ router.post(
       if (queryRunner.isTransactionActive) {
         await queryRunner.rollbackTransaction();
       }
-      res.status(500).json({ error: "Internal server error" });
+      throw err;
     } finally {
       await queryRunner.release();
     }
@@ -357,21 +356,32 @@ router.get(
     }
 
     const paymentRepo = AppDataSource.getRepository(Payment);
-    try {
-      const payment = await paymentRepo.findOne({
-        where: { id },
-        relations: { reservation: true },
-      });
+    const payment = await paymentRepo.findOne({
+      where: { id },
+      relations: { reservation: true },
+    });
 
-      if (!payment) {
-        res.status(404).json({ error: "Payment not found" });
-        return;
-      }
-
-      res.status(200).json(payment);
-    } catch (_err) {
-      res.status(500).json({ error: "Internal server error" });
+    if (!payment) {
+      res.status(404).json({ error: "Payment not found" });
+      return;
     }
+
+    const user = req.user!;
+    const isOwner = user.role === "PASSENGER" && payment.reservation?.passenger_id === user.id;
+
+    if (!isOwner) {
+      res.status(403).json({ error: "Forbidden: not your payment" });
+      return;
+    }
+
+    res.status(200).json({
+      id: payment.id,
+      reservation_id: payment.reservation_id,
+      amount: payment.amount,
+      status: payment.status,
+      completed_at: payment.completed_at,
+      refunded_at: payment.refunded_at,
+    });
   }
 );
 

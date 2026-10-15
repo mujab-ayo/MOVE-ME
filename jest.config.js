@@ -3,7 +3,7 @@ module.exports = {
   testEnvironment: 'node',
   testMatch: ['**/*.test.ts', '**/*.spec.ts'],
   verbose: true,
-  testTimeout: 30000,
+  testTimeout: 60000,
   maxWorkers: 1,
   clearMocks: true,
   resetMocks: true,

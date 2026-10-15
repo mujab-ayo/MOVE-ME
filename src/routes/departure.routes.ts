@@ -230,9 +230,8 @@ router.get(
       datetime?: string;
     };
 
-    try {
-      const qb = departureRepository
-        .createQueryBuilder("departure")
+    const qb = departureRepository
+      .createQueryBuilder("departure")
         .innerJoinAndSelect("departure.route", "route")
         .innerJoinAndSelect("departure.driver", "driver")
         .where("departure.route_id = :routeId", { routeId })
@@ -324,9 +323,6 @@ router.get(
         results,
         empty: results.length === 0,
       });
-    } catch (_err) {
-      res.status(500).json({ error: "Internal server error" });
-    }
   }
 );
 
@@ -535,7 +531,7 @@ router.post(
         return;
       }
 
-      res.status(500).json({ error: "Internal server error" });
+      throw err;
     }
   }
 );
@@ -751,7 +747,7 @@ router.post(
         return;
       }
 
-      res.status(500).json({ error: "Internal server error" });
+      throw err;
     } finally {
       await queryRunner.release();
     }
@@ -881,7 +877,7 @@ router.post(
         return;
       }
 
-      res.status(500).json({ error: "Internal server error" });
+      throw err;
     } finally {
       await queryRunner.release();
     }
@@ -1011,7 +1007,7 @@ router.post(
         return;
       }
 
-      res.status(500).json({ error: "Internal server error" });
+      throw err;
     } finally {
       await queryRunner.release();
     }
@@ -1138,11 +1134,11 @@ router.post(
         status: row?.status || "COMPLETED",
         completedAt: row?.completed_at,
       });
-    } catch (_err) {
+    } catch (err) {
       if (queryRunner.isTransactionActive) {
         await queryRunner.rollbackTransaction();
       }
-      res.status(500).json({ error: "Internal server error" });
+      throw err;
     } finally {
       await queryRunner.release();
     }
@@ -1382,11 +1378,11 @@ router.post(
         cancelledReservations: affectedReservations.length,
         refunds,
       });
-    } catch (_err) {
+    } catch (err) {
       if (queryRunner.isTransactionActive) {
         await queryRunner.rollbackTransaction();
       }
-      res.status(500).json({ error: "Internal server error" });
+      throw err;
     } finally {
       await queryRunner.release();
     }

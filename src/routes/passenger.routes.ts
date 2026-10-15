@@ -83,58 +83,54 @@ router.get(
     const reservationRepo = AppDataSource.getRepository(Reservation);
     const passengerId = req.user!.id;
 
-    try {
-      // Guarded opportunistic status flip: only flip caller's reservations that are currently PENDING_PAYMENT and hold elapsed
-      await AppDataSource.query(
-        `UPDATE reservations
-         SET status = 'EXPIRED'
-         WHERE passenger_id = $1 AND status = 'PENDING_PAYMENT' AND hold_expires_at <= now();`,
-        [passengerId]
-      );
+    // Guarded opportunistic status flip: only flip caller's reservations that are currently PENDING_PAYMENT and hold elapsed
+    await AppDataSource.query(
+      `UPDATE reservations
+       SET status = 'EXPIRED'
+       WHERE passenger_id = $1 AND status = 'PENDING_PAYMENT' AND hold_expires_at <= now();`,
+      [passengerId]
+    );
 
-      // Data ownership requirement:
-      // Filtering by passenger_id = req.user.id is a strict authorization/data-ownership boundary,
-      // NOT an optional search filter. Passengers must only ever see their own reservations.
-      const reservations = await reservationRepo.find({
-        where: { passenger_id: passengerId },
-        order: { created_at: "DESC" },
-        relations: { departure: { route: true } },
-      });
+    // Data ownership requirement:
+    // Filtering by passenger_id = req.user.id is a strict authorization/data-ownership boundary,
+    // NOT an optional search filter. Passengers must only ever see their own reservations.
+    const reservations = await reservationRepo.find({
+      where: { passenger_id: passengerId },
+      order: { created_at: "DESC" },
+      relations: { departure: { route: true } },
+    });
 
-      const response = reservations.map((res) => ({
-        id: res.id,
-        departure_id: res.departure_id,
-        passenger_id: res.passenger_id,
-        status: res.status,
-        fare_amount: res.fare_amount,
-        hold_expires_at: res.hold_expires_at,
-        created_at: res.created_at,
-        cancelled_at: res.cancelled_at ?? res.departure?.cancelled_at ?? null,
-        cancellation_reason: res.cancellation_reason ?? res.departure?.cancellation_reason ?? null,
-        // Trip progress and timestamps
-        trip_status: res.departure?.status ?? null,
-        tripStatus: res.departure?.status ?? null,
-        arrived_at: res.departure?.arrived_at ?? null,
-        arrivedAt: res.departure?.arrived_at ?? null,
-        departed_at: res.departure?.departed_at ?? null,
-        departedAt: res.departure?.departed_at ?? null,
-        completed_at: res.departure?.completed_at ?? null,
-        completedAt: res.departure?.completed_at ?? null,
-        // Departure fields
-        departure_time: res.departure?.departure_time,
-        duration_minutes: res.departure?.duration_minutes,
-        mode: res.departure?.mode,
-        // Route fields
-        pickup_point: res.departure?.route?.pickup_point,
-        dropoff_point: res.departure?.route?.dropoff_point,
-        // Nested departure entity
-        departure: res.departure,
-      }));
+    const response = reservations.map((res) => ({
+      id: res.id,
+      departure_id: res.departure_id,
+      passenger_id: res.passenger_id,
+      status: res.status,
+      fare_amount: res.fare_amount,
+      hold_expires_at: res.hold_expires_at,
+      created_at: res.created_at,
+      cancelled_at: res.cancelled_at ?? res.departure?.cancelled_at ?? null,
+      cancellation_reason: res.cancellation_reason ?? res.departure?.cancellation_reason ?? null,
+      // Trip progress and timestamps
+      trip_status: res.departure?.status ?? null,
+      tripStatus: res.departure?.status ?? null,
+      arrived_at: res.departure?.arrived_at ?? null,
+      arrivedAt: res.departure?.arrived_at ?? null,
+      departed_at: res.departure?.departed_at ?? null,
+      departedAt: res.departure?.departed_at ?? null,
+      completed_at: res.departure?.completed_at ?? null,
+      completedAt: res.departure?.completed_at ?? null,
+      // Departure fields
+      departure_time: res.departure?.departure_time,
+      duration_minutes: res.departure?.duration_minutes,
+      mode: res.departure?.mode,
+      // Route fields
+      pickup_point: res.departure?.route?.pickup_point,
+      dropoff_point: res.departure?.route?.dropoff_point,
+      // Nested departure entity
+      departure: res.departure,
+    }));
 
-      res.status(200).json(response);
-    } catch (_err) {
-      res.status(500).json({ error: "Internal server error" });
-    }
+    res.status(200).json(response);
   }
 );
 
@@ -197,39 +193,35 @@ router.get(
     const passengerId = req.user!.id;
     const unreadOnly = req.query.unread === "true";
 
-    try {
-      const rows = unreadOnly
-        ? await AppDataSource.query(
-            `SELECT id, user_id, type, payload, read_at, created_at
-             FROM notifications
-             WHERE user_id = $1 AND read_at IS NULL
-             ORDER BY created_at DESC;`,
-            [passengerId]
-          )
-        : await AppDataSource.query(
-            `SELECT id, user_id, type, payload, read_at, created_at
-             FROM notifications
-             WHERE user_id = $1
-             ORDER BY created_at DESC;`,
-            [passengerId]
-          );
+    const rows = unreadOnly
+      ? await AppDataSource.query(
+          `SELECT id, user_id, type, payload, read_at, created_at
+           FROM notifications
+           WHERE user_id = $1 AND read_at IS NULL
+           ORDER BY created_at DESC;`,
+          [passengerId]
+        )
+      : await AppDataSource.query(
+          `SELECT id, user_id, type, payload, read_at, created_at
+           FROM notifications
+           WHERE user_id = $1
+           ORDER BY created_at DESC;`,
+          [passengerId]
+        );
 
-      const notifications = rows.map((row: any) => ({
-        id: row.id,
-        user_id: row.user_id,
-        userId: row.user_id,
-        type: row.type,
-        payload: typeof row.payload === "string" ? JSON.parse(row.payload) : row.payload,
-        read_at: row.read_at,
-        readAt: row.read_at,
-        created_at: row.created_at,
-        createdAt: row.created_at,
-      }));
+    const notifications = rows.map((row: any) => ({
+      id: row.id,
+      user_id: row.user_id,
+      userId: row.user_id,
+      type: row.type,
+      payload: typeof row.payload === "string" ? JSON.parse(row.payload) : row.payload,
+      read_at: row.read_at,
+      readAt: row.read_at,
+      created_at: row.created_at,
+      createdAt: row.created_at,
+    }));
 
-      res.status(200).json(notifications);
-    } catch (_err) {
-      res.status(500).json({ error: "Internal server error" });
-    }
+    res.status(200).json(notifications);
   }
 );
 

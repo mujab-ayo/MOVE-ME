@@ -143,7 +143,7 @@ router.post(
         res.status(409).json({ error: "Payment with this idempotency key already exists" });
         return;
       }
-      res.status(500).json({ error: "Internal server error" });
+      throw err;
     }
   }
 );
@@ -252,9 +252,25 @@ router.get(
         }
       }
 
-      res.status(200).json(reservation);
-    } catch (_err) {
-      res.status(500).json({ error: "Internal server error" });
+      if (isDepartureDriver) {
+        const { payments: _payments, ...driverResponse } = reservation;
+        res.status(200).json(driverResponse);
+        return;
+      }
+
+      const passengerResponse = {
+        ...reservation,
+        payments: (reservation.payments || []).map((p) => ({
+          id: p.id,
+          status: p.status,
+          amount: p.amount,
+          refunded_at: p.refunded_at,
+        })),
+      };
+
+      res.status(200).json(passengerResponse);
+    } catch (err) {
+      throw err;
     }
   }
 );
@@ -483,7 +499,7 @@ router.post(
       if (queryRunner.isTransactionActive) {
         await queryRunner.rollbackTransaction();
       }
-      res.status(500).json({ error: "Internal server error" });
+      throw err;
     } finally {
       await queryRunner.release();
     }

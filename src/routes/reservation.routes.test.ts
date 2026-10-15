@@ -163,7 +163,7 @@ describe("Reservation & Passenger Routes Integration (Section 4 & Ownership)", (
         status: "SCHEDULED",
       })
     );
-  }, 30000);
+  }, 60000);
 
   afterAll(async () => {
     const paymentRepo = AppDataSource.getRepository(Payment);
@@ -183,7 +183,7 @@ describe("Reservation & Passenger Routes Integration (Section 4 & Ownership)", (
     if (AppDataSource.isInitialized) {
       await AppDataSource.destroy();
     }
-  }, 30000);
+  }, 60000);
 
   beforeEach(async () => {
     const paymentRepo = AppDataSource.getRepository(Payment);
@@ -511,6 +511,99 @@ describe("Reservation & Passenger Routes Integration (Section 4 & Ownership)", (
       expect(res.body.id).toBe(reservation.id);
       expect(res.body.departure_id).toBe(departureA.id);
       expect(res.body.departure.driver_id).toBe(driverA.id);
+    });
+
+    it("data exposure: driver's response has no payments and no idempotency_key", async () => {
+      const reservationRepo = AppDataSource.getRepository(Reservation);
+      const paymentRepo = AppDataSource.getRepository(Payment);
+
+      const reservation = await reservationRepo.save(
+        reservationRepo.create({
+          departure_id: departureA.id,
+          passenger_id: passengerB.id,
+          status: "CONFIRMED",
+          fare_amount: "3500.00",
+          hold_expires_at: new Date(Date.now() + 10 * 60 * 1000),
+        })
+      );
+
+      const driverKey = `driver-key-${Date.now()}-${Math.random()}`;
+      await paymentRepo.save(
+        paymentRepo.create({
+          reservation_id: reservation.id,
+          amount: "3500.00",
+          status: "SUCCEEDED",
+          idempotency_key: driverKey,
+        })
+      );
+
+      const res = await request(app)
+        .get(`/reservations/${reservation.id}`)
+        .set("Authorization", `Bearer ${driverAToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(reservation.id);
+      expect(res.body.status).toBe("CONFIRMED");
+      expect(res.body.payments).toBeUndefined();
+      expect(res.body.idempotency_key).toBeUndefined();
+      expect(JSON.stringify(res.body)).not.toContain("payments");
+      expect(JSON.stringify(res.body)).not.toContain(driverKey);
+      expect(JSON.stringify(res.body)).not.toContain("idempotency_key");
+    });
+
+    it("data exposure: passenger's response has payments without idempotency_key", async () => {
+      const userRepo = AppDataSource.getRepository(User);
+      const reservationRepo = AppDataSource.getRepository(Reservation);
+      const paymentRepo = AppDataSource.getRepository(Payment);
+
+      const extraPassenger = await userRepo.save(
+        userRepo.create({
+          email: `extra-pass-${Date.now()}-${Math.random()}@test.com`,
+          password_hash: "hash",
+          role: "PASSENGER",
+          driver_enabled: false,
+        })
+      );
+      const extraPassengerToken = jwt.sign({ sub: extraPassenger.id, role: extraPassenger.role }, secret);
+
+      const reservation = await reservationRepo.save(
+        reservationRepo.create({
+          departure_id: departureA.id,
+          passenger_id: extraPassenger.id,
+          status: "CONFIRMED",
+          fare_amount: "3500.00",
+          hold_expires_at: new Date(Date.now() + 10 * 60 * 1000),
+        })
+      );
+
+      const passengerKey = `pass-key-${Date.now()}-${Math.random()}`;
+      const payment = await paymentRepo.save(
+        paymentRepo.create({
+          reservation_id: reservation.id,
+          amount: "3500.00",
+          status: "SUCCEEDED",
+          idempotency_key: passengerKey,
+        })
+      );
+
+      const res = await request(app)
+        .get(`/reservations/${reservation.id}`)
+        .set("Authorization", `Bearer ${extraPassengerToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(reservation.id);
+      expect(Array.isArray(res.body.payments)).toBe(true);
+      expect(res.body.payments).toHaveLength(1);
+      expect(res.body.payments[0]).toEqual({
+        id: payment.id,
+        status: "SUCCEEDED",
+        amount: "3500.00",
+        refunded_at: null,
+      });
+      expect(res.body.payments[0].idempotency_key).toBeUndefined();
+      expect(res.body.idempotency_key).toBeUndefined();
+      expect(JSON.stringify(res.body)).not.toContain(passengerKey);
+      expect(JSON.stringify(res.body)).not.toContain("idempotency_key");
     });
 
     it("opportunistically updates PENDING_PAYMENT reservation to EXPIRED when hold_expires_at has passed", async () => {

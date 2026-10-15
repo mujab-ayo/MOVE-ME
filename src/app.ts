@@ -1,4 +1,4 @@
-import express, { Request, Response } from "express";
+import express, { Request, Response, NextFunction } from "express";
 import swaggerUi from "swagger-ui-express";
 
 import authRouter from "./routes/auth.routes";
@@ -72,6 +72,28 @@ app.get("/docs.json", (_req: Request, res: Response) => {
 // Health check endpoint
 app.get("/health", (_req: Request, res: Response) => {
   res.status(200).json({ status: "ok" });
+});
+
+// 404 handler for unknown routes
+app.use((_req: Request, res: Response) => {
+  res.status(404).json({ error: "Not found" });
+});
+
+// Final error-handling middleware
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  // Malformed JSON request bodies
+  if (
+    (err instanceof SyntaxError && ((err as any).status === 400 || (err as any).statusCode === 400)) ||
+    err?.type === "entity.parse.failed"
+  ) {
+    return res.status(400).json({ error: "Malformed JSON body" });
+  }
+
+  // Server-side error logging
+  console.error(err);
+
+  // Status 500 with no stack trace or SQL text
+  return res.status(500).json({ error: "Internal server error" });
 });
 
 export default app;

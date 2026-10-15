@@ -10,10 +10,6 @@ export const validateBody = (schema: ZodSchema) => {
       if (err instanceof ZodError) {
         res.status(400).json({
           error: "Validation failed",
-          details: err.issues.map((issue) => ({
-            field: issue.path.join("."),
-            message: issue.message,
-          })),
         });
         return;
       }
@@ -30,10 +26,6 @@ export const validateQuery = (schema: ZodSchema) => {
       if (err instanceof ZodError || err?.name === "ZodError" || Array.isArray(err?.issues)) {
         res.status(400).json({
           error: "Validation failed",
-          details: err.issues.map((issue: any) => ({
-            field: issue.path.join("."),
-            message: issue.message,
-          })),
         });
         return;
       }

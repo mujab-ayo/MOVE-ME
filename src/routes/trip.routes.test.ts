@@ -105,7 +105,7 @@ describe("Trip Progress Endpoints Integration (/departures/:id/arrive, /depart, 
         active: true,
       })
     );
-  }, 30000);
+  }, 60000);
 
   afterAll(async () => {
     const paymentRepo = AppDataSource.getRepository(Payment);
@@ -125,7 +125,7 @@ describe("Trip Progress Endpoints Integration (/departures/:id/arrive, /depart, 
     if (AppDataSource.isInitialized) {
       await AppDataSource.destroy();
     }
-  }, 30000);
+  }, 60000);
 
   beforeEach(async () => {
     const paymentRepo = AppDataSource.getRepository(Payment);

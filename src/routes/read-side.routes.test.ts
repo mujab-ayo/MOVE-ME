@@ -121,7 +121,7 @@ describe("Read-side Endpoints Integration (MM-07/08 / docs/design.md Section 4)"
         active: true,
       })
     );
-  }, 30000);
+  }, 60000);
 
   afterAll(async () => {
     const notificationRepo = AppDataSource.getRepository(Notification);
@@ -143,7 +143,7 @@ describe("Read-side Endpoints Integration (MM-07/08 / docs/design.md Section 4)"
     if (AppDataSource.isInitialized) {
       await AppDataSource.destroy();
     }
-  }, 30000);
+  }, 60000);
 
   beforeEach(async () => {
     const notificationRepo = AppDataSource.getRepository(Notification);

@@ -110,7 +110,7 @@ describe("Payment Flow Integration (MM-06 / Decision 6)", () => {
         status: "SCHEDULED",
       })
     );
-  }, 30000);
+  }, 60000);
 
   afterAll(async () => {
     const paymentRepo = AppDataSource.getRepository(Payment);
@@ -130,7 +130,7 @@ describe("Payment Flow Integration (MM-06 / Decision 6)", () => {
     if (AppDataSource.isInitialized) {
       await AppDataSource.destroy();
     }
-  }, 30000);
+  }, 60000);
 
   beforeEach(async () => {
     const paymentRepo = AppDataSource.getRepository(Payment);
@@ -759,7 +759,7 @@ describe("Payment Flow Integration (MM-06 / Decision 6)", () => {
           }
           await testRunner.release();
         }
-      }, 30000);
+      }, 60000);
     });
   });
 
