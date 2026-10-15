@@ -148,6 +148,20 @@ describe("Driver and Admin Endpoints Integration", () => {
       expect(res.status).toBe(409);
       expect(res.body.error).toMatch(/already registered/i);
     });
+
+    it("rejects vehicle creation with seatCapacity 0 with 400", async () => {
+      const res = await request(app)
+        .post("/drivers/me/vehicles")
+        .set("Authorization", `Bearer ${driverAToken}`)
+        .send({
+          description: "Zero Seat Vehicle",
+          registrationIdentifier: "REG-ZERO-SEAT",
+          seatCapacity: 0,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("Validation failed");
+    });
   });
 
   describe("GET /drivers/me/vehicles (Data Ownership)", () => {
@@ -222,6 +236,16 @@ describe("Driver and Admin Endpoints Integration", () => {
       const userRepo = AppDataSource.getRepository(User);
       const updated = await userRepo.findOneBy({ id: driverA.id });
       expect(updated?.driver_enabled).toBe(true);
+    });
+
+    it("returns 400 if enabled is not boolean on driver enable", async () => {
+      const res = await request(app)
+        .patch(`/admin/drivers/${driverA.id}/enable`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ enabled: "not-a-boolean" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("Validation failed");
     });
 
     it("returns 404 if user is not a driver", async () => {

@@ -55,6 +55,30 @@ describe("Auth Middleware", () => {
       expect(res.body.error).toMatch(/invalid or expired/i);
     });
 
+    it("returns 401 if token payload is missing sub or role", async () => {
+      // Missing role
+      const tokenWithoutRole = jwt.sign(
+        { sub: "123e4567-e89b-12d3-a456-426614174000" },
+        secret
+      );
+      const resNoRole = await request(app)
+        .get("/protected")
+        .set("Authorization", `Bearer ${tokenWithoutRole}`);
+      expect(resNoRole.status).toBe(401);
+      expect(resNoRole.body).toEqual({ error: "Invalid token payload" });
+
+      // Missing sub
+      const tokenWithoutSub = jwt.sign(
+        { role: "PASSENGER" },
+        secret
+      );
+      const resNoSub = await request(app)
+        .get("/protected")
+        .set("Authorization", `Bearer ${tokenWithoutSub}`);
+      expect(resNoSub.status).toBe(401);
+      expect(resNoSub.body).toEqual({ error: "Invalid token payload" });
+    });
+
     it("attaches req.user { id, role } and calls next() on valid token", async () => {
       const token = jwt.sign(
         { sub: "123e4567-e89b-12d3-a456-426614174000", role: "PASSENGER" },

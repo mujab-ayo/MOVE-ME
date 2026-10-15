@@ -287,6 +287,15 @@ describe("Booking Race and Reservation Invariants (MM-04 & MM-05)", () => {
   });
 
   describe("Plain cases and eligibility gates", () => {
+    it("returns 400 for malformed departure id on reservations", async () => {
+      const res = await request(app)
+        .post("/departures/not-a-valid-uuid/reservations")
+        .set("Authorization", `Bearer ${passengerTokens[0]}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("Invalid departure ID format");
+    });
+
     it("Test 4a: unknown departure id returns 404", async () => {
       const nonExistentId = crypto.randomUUID();
       const res = await request(app)

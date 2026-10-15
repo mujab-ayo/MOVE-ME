@@ -267,6 +267,39 @@ describe("Payment Flow Integration (MM-06 / Decision 6)", () => {
       expect(payment?.reservation_id).toBe(reservation.id);
       expect(payment?.idempotency_key).toBeDefined();
     });
+
+    it("returns 409 when POST /reservations/:id/payments is called twice with same client idempotencyKey", async () => {
+      const reservationRepo = AppDataSource.getRepository(Reservation);
+      const reservation = await reservationRepo.save(
+        reservationRepo.create({
+          departure_id: testDeparture.id,
+          passenger_id: passengerA.id,
+          status: "PENDING_PAYMENT",
+          fare_amount: "3000.00",
+          hold_expires_at: new Date(Date.now() + 5 * 60 * 1000),
+        })
+      );
+
+      const clientKey = `idemp-${Date.now()}-${Math.random()}`;
+
+      // First call -> 201
+      const res1 = await request(app)
+        .post(`/reservations/${reservation.id}/payments`)
+        .set("Authorization", `Bearer ${passengerAToken}`)
+        .send({ idempotencyKey: clientKey });
+
+      expect(res1.status).toBe(201);
+      expect(res1.body.paymentId).toBeDefined();
+
+      // Second call with same idempotencyKey -> 409
+      const res2 = await request(app)
+        .post(`/reservations/${reservation.id}/payments`)
+        .set("Authorization", `Bearer ${passengerAToken}`)
+        .send({ idempotencyKey: clientKey });
+
+      expect(res2.status).toBe(409);
+      expect(res2.body.error).toBe("Payment with this idempotency key already exists");
+    });
   });
 
   describe("POST /payments/:id/callback", () => {

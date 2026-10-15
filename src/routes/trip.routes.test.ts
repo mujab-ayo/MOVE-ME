@@ -322,6 +322,38 @@ describe("Trip Progress Endpoints Integration (/departures/:id/arrive, /depart, 
     expect(malformedId.status).toBe(400);
   });
 
+  it("returns 400 for malformed departure id on depart", async () => {
+    const res = await request(app)
+      .post("/departures/not-a-valid-uuid/depart")
+      .set("Authorization", `Bearer ${driverAToken}`);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("Invalid departure ID format");
+  });
+
+  it("returns 404 for unknown departure id on depart", async () => {
+    const res = await request(app)
+      .post("/departures/00000000-0000-0000-0000-000000000000/depart")
+      .set("Authorization", `Bearer ${driverAToken}`);
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("Departure not found");
+  });
+
+  it("returns 400 for malformed departure id on complete", async () => {
+    const res = await request(app)
+      .post("/departures/not-a-valid-uuid/complete")
+      .set("Authorization", `Bearer ${driverAToken}`);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("Invalid departure ID format");
+  });
+
+  it("returns 404 for unknown departure id on complete", async () => {
+    const res = await request(app)
+      .post("/departures/00000000-0000-0000-0000-000000000000/complete")
+      .set("Authorization", `Bearer ${driverAToken}`);
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("Departure not found");
+  });
+
   it("4. Delayed trip: driver has departure A (arrived or in progress) and a later, non-overlapping departure B whose scheduled time has already passed (set B's departure_time into the past directly in the database). Arriving at B returns 409 while A is active, and succeeds after A completes.", async () => {
     const departureRepo = AppDataSource.getRepository(Departure);
 

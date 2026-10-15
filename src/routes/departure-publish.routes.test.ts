@@ -38,6 +38,9 @@ describe("Departure Publishing Integration (POST /departures / MM-02)", () => {
     const departureRepo = AppDataSource.getRepository(Departure);
 
     // Cleanup
+    await AppDataSource.query(`DELETE FROM notifications;`);
+    await AppDataSource.query(`DELETE FROM payments;`);
+    await AppDataSource.query(`DELETE FROM reservations;`);
     await departureRepo.createQueryBuilder().delete().execute();
     await vehicleRepo.createQueryBuilder().delete().execute();
     await userRepo.createQueryBuilder().delete().execute();
@@ -144,6 +147,9 @@ describe("Departure Publishing Integration (POST /departures / MM-02)", () => {
     const routeRepo = AppDataSource.getRepository(Route);
     const departureRepo = AppDataSource.getRepository(Departure);
 
+    await AppDataSource.query(`DELETE FROM notifications;`);
+    await AppDataSource.query(`DELETE FROM payments;`);
+    await AppDataSource.query(`DELETE FROM reservations;`);
     await departureRepo.createQueryBuilder().delete().execute();
     await vehicleRepo.createQueryBuilder().delete().execute();
     await userRepo.createQueryBuilder().delete().execute();

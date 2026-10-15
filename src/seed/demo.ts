@@ -165,6 +165,81 @@ export async function seedDemo(): Promise<void> {
   console.log("\nSeeding routes...");
   await seedRoutes();
 
+  // 5b. Idempotently seed future departures for driver1
+  console.log("\nSeeding demo departures for driver1...");
+  const departureRepo = AppDataSource.getRepository(Departure);
+  const routeRepo = AppDataSource.getRepository(Route);
+
+  const futureScheduledCount = await departureRepo
+    .createQueryBuilder("d")
+    .where("d.driver_id = :driverId", { driverId: driverUser.id })
+    .andWhere("d.status = 'SCHEDULED'")
+    .andWhere("d.departure_time > :now", { now: new Date() })
+    .getCount();
+
+  if (futureScheduledCount > 0) {
+    console.log(
+      `  driver1 already has ${futureScheduledCount} future SCHEDULED departure(s). Skipping departure seed.`
+    );
+  } else {
+    const route = await routeRepo.findOne({
+      where: { active: true },
+      order: { id: "ASC" },
+    });
+
+    if (!route) {
+      throw new Error("No active route found for departure seeding.");
+    }
+
+    // Tomorrow at 09:00 UTC (SOLO)
+    const tomorrow = new Date();
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    tomorrow.setUTCHours(9, 0, 0, 0);
+
+    const soloDeparture = departureRepo.create({
+      driver_id: driverUser.id,
+      driver: driverUser,
+      vehicle_id: vehicle.id,
+      vehicle: vehicle,
+      route_id: route.id,
+      route: route,
+      mode: "SOLO",
+      departure_time: tomorrow,
+      duration_minutes: route.base_duration_minutes,
+      fare_amount: route.base_fare_solo,
+      capacity: 1,
+      status: "SCHEDULED",
+    });
+    await departureRepo.save(soloDeparture);
+    console.log(
+      `  Created SOLO departure: ${tomorrow.toISOString()} (capacity: 1, fare: ${route.base_fare_solo})`
+    );
+
+    // Day after tomorrow at 09:00 UTC (POOLED)
+    const dayAfter = new Date();
+    dayAfter.setUTCDate(dayAfter.getUTCDate() + 2);
+    dayAfter.setUTCHours(9, 0, 0, 0);
+
+    const pooledDeparture = departureRepo.create({
+      driver_id: driverUser.id,
+      driver: driverUser,
+      vehicle_id: vehicle.id,
+      vehicle: vehicle,
+      route_id: route.id,
+      route: route,
+      mode: "POOLED",
+      departure_time: dayAfter,
+      duration_minutes: route.base_duration_minutes,
+      fare_amount: route.base_fare_per_seat,
+      capacity: vehicle.seat_capacity,
+      status: "SCHEDULED",
+    });
+    await departureRepo.save(pooledDeparture);
+    console.log(
+      `  Created POOLED departure: ${dayAfter.toISOString()} (capacity: ${vehicle.seat_capacity}, fare: ${route.base_fare_per_seat})`
+    );
+  }
+
   // 6. Read back each user's stored password_hash and verify with argon2.verify
   console.log("\nVerifying user credentials with argon2.verify...");
   let allPasswordsValid = true;

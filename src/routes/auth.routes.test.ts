@@ -72,9 +72,65 @@ describe("Auth Endpoints Integration", () => {
       expect(res.body.userId).toBeDefined();
       expect(res.body.driverEnabled).toBe(false);
     });
+
+    it("returns 400 on invalid input for driver registration", async () => {
+      const res = await request(app).post("/auth/register/driver").send({
+        email: "not-an-email",
+        password: "123",
+      });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("Validation failed");
+    });
+
+    it("returns 409 if driver email is already taken", async () => {
+      const res = await request(app).post("/auth/register/driver").send({
+        email: "newdriver@test.com",
+        password: "SecretPassword123",
+      });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toMatch(/already registered/i);
+    });
   });
 
   describe("POST /auth/login", () => {
+    it("returns 400 on login with missing email", async () => {
+      const res = await request(app).post("/auth/login").send({
+        password: "SecretPassword123",
+      });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("Validation failed");
+    });
+
+    it("returns 400 on login with missing password", async () => {
+      const res = await request(app).post("/auth/login").send({
+        email: "newdriver@test.com",
+      });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("Validation failed");
+    });
+
+    it("returns 500 on login if JWT_SECRET is not configured on server", async () => {
+      const originalSecret = process.env.JWT_SECRET;
+      delete process.env.JWT_SECRET;
+      try {
+        const res = await request(app).post("/auth/login").send({
+          email: "newdriver@test.com",
+          password: "SecretPassword123",
+        });
+
+        expect(res.status).toBe(500);
+        expect(res.body).toEqual({
+          error: "JWT_SECRET is not configured on server",
+        });
+      } finally {
+        process.env.JWT_SECRET = originalSecret;
+      }
+    });
+
     it("returns 200 with JWT containing sub and role ONLY", async () => {
       const res = await request(app).post("/auth/login").send({
         email: "newdriver@test.com",
