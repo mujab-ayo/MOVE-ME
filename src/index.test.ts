@@ -64,6 +64,9 @@ describe("GET /docs", () => {
     expect(paths["/drivers/me/vehicles"].post.tags).toContain("Vehicles");
     expect(paths["/drivers/me/vehicles"].get.tags).toContain("Vehicles");
 
+    expect(paths["/drivers/me/departures"]).toBeDefined();
+    expect(paths["/drivers/me/departures"].get.tags).toContain("Departures");
+
     expect(paths["/admin/drivers"]).toBeDefined();
     expect(paths["/admin/drivers"].get.tags).toContain("Admin");
 
@@ -90,6 +93,12 @@ describe("GET /docs", () => {
 
     expect(paths["/passengers/me/reservations"]).toBeDefined();
     expect(paths["/passengers/me/reservations"].get.tags).toContain("Bookings");
+
+    expect(paths["/passengers/me/notifications"]).toBeDefined();
+    expect(paths["/passengers/me/notifications"].get.tags).toContain("Bookings");
+
+    expect(paths["/notifications/{id}/read"]).toBeDefined();
+    expect(paths["/notifications/{id}/read"].patch.tags).toContain("Bookings");
 
     expect(paths["/reservations/{id}/payments"]).toBeDefined();
     expect(paths["/reservations/{id}/payments"].post.tags).toContain("Payments");

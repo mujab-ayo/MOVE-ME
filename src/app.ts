@@ -9,6 +9,7 @@ import reservationRouter from "./routes/reservation.routes";
 import paymentRouter from "./routes/payment.routes";
 import passengerRouter from "./routes/passenger.routes";
 import routeRouter from "./routes/route.routes";
+import notificationRouter from "./routes/notification.routes";
 import { swaggerSpec } from "./swagger";
 
 const app = express();
@@ -40,6 +41,7 @@ app.use("/reservations", reservationRouter);
 app.use("/payments", paymentRouter);
 app.use("/passengers", passengerRouter);
 app.use("/routes", routeRouter);
+app.use("/notifications", notificationRouter);
 
 // Swagger UI documentation
 const swaggerUiOptions = {

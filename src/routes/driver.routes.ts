@@ -255,4 +255,156 @@ router.get(
   }
 );
 
+/**
+ * @openapi
+ * /drivers/me/departures:
+ *   get:
+ *     summary: List driver departures
+ *     description: Retrieves all departures published by the authenticated driver, ordered soonest first (departure_time ASC). Each item includes status, mode, departure_time, capacity, available_capacity, and counts of confirmed and pending reservations.
+ *     tags:
+ *       - Departures
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of departures owned by caller
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: string
+ *                     format: uuid
+ *                   status:
+ *                     type: string
+ *                     example: SCHEDULED
+ *                   mode:
+ *                     type: string
+ *                     example: POOLED
+ *                   departure_time:
+ *                     type: string
+ *                     format: date-time
+ *                   capacity:
+ *                     type: integer
+ *                     example: 4
+ *                   available_capacity:
+ *                     type: integer
+ *                     example: 2
+ *                   confirmed_reservations:
+ *                     type: integer
+ *                     example: 1
+ *                   pending_reservations:
+ *                     type: integer
+ *                     example: 1
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Forbidden - driver role required
+ */
+router.get(
+  "/me/departures",
+  requireAuth,
+  requireRole("DRIVER"),
+  async (req: Request, res: Response): Promise<void> => {
+    const driverId = req.user!.id;
+
+    try {
+      const rows = await AppDataSource.query(
+        `SELECT
+           d.id,
+           d.driver_id,
+           d.vehicle_id,
+           d.route_id,
+           d.status,
+           d.mode,
+           d.departure_time,
+           d.duration_minutes,
+           d.fare_amount,
+           d.capacity,
+           d.created_at,
+           d.arrived_at,
+           d.departed_at,
+           d.completed_at,
+           d.cancelled_at,
+           d.cancellation_reason,
+           r.pickup_point,
+           r.dropoff_point,
+           v.description AS vehicle_description,
+           v.registration_identifier AS vehicle_registration,
+           COALESCE(conf.cnt, 0)::int AS confirmed_reservations,
+           COALESCE(pend.cnt, 0)::int AS pending_reservations,
+           (d.capacity - COALESCE(active.cnt, 0))::int AS available_capacity
+         FROM departures d
+         LEFT JOIN routes r ON d.route_id = r.id
+         LEFT JOIN vehicles v ON d.vehicle_id = v.id
+         LEFT JOIN (
+           SELECT departure_id, count(*)::int AS cnt
+           FROM reservations
+           WHERE status = 'CONFIRMED'
+           GROUP BY departure_id
+         ) conf ON conf.departure_id = d.id
+         LEFT JOIN (
+           SELECT departure_id, count(*)::int AS cnt
+           FROM reservations
+           WHERE status = 'PENDING_PAYMENT' AND hold_expires_at > now()
+           GROUP BY departure_id
+         ) pend ON pend.departure_id = d.id
+         LEFT JOIN (
+           SELECT departure_id, count(*)::int AS cnt
+           FROM reservations
+           WHERE status = 'CONFIRMED' OR (status = 'PENDING_PAYMENT' AND hold_expires_at > now())
+           GROUP BY departure_id
+         ) active ON active.departure_id = d.id
+         WHERE d.driver_id = $1
+         ORDER BY d.departure_time ASC;`,
+        [driverId]
+      );
+
+      const departures = rows.map((row: any) => ({
+        id: row.id,
+        driver_id: row.driver_id,
+        driverId: row.driver_id,
+        vehicle_id: row.vehicle_id,
+        vehicleId: row.vehicle_id,
+        route_id: row.route_id,
+        routeId: row.route_id,
+        status: row.status,
+        mode: row.mode,
+        departure_time: row.departure_time,
+        departureTime: row.departure_time,
+        duration_minutes: row.duration_minutes,
+        durationMinutes: row.duration_minutes,
+        fare_amount: row.fare_amount,
+        fareAmount: row.fare_amount,
+        capacity: row.capacity,
+        available_capacity: row.available_capacity,
+        availableCapacity: row.available_capacity,
+        confirmed_reservations: row.confirmed_reservations,
+        confirmedReservations: row.confirmed_reservations,
+        pending_reservations: row.pending_reservations,
+        pendingReservations: row.pending_reservations,
+        pickup_point: row.pickup_point,
+        pickupPoint: row.pickup_point,
+        dropoff_point: row.dropoff_point,
+        dropoffPoint: row.dropoff_point,
+        vehicle_description: row.vehicle_description,
+        vehicle_registration: row.vehicle_registration,
+        created_at: row.created_at,
+        arrived_at: row.arrived_at,
+        departed_at: row.departed_at,
+        completed_at: row.completed_at,
+        cancelled_at: row.cancelled_at,
+        cancellation_reason: row.cancellation_reason,
+      }));
+
+      res.status(200).json(departures);
+    } catch (_err) {
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
 export default router;
