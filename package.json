@@ -19,7 +19,10 @@
     "seed:demo": "ts-node-dev --transpile-only src/seed/demo.ts",
     "seed:prod": "node dist/seed/routes.js",
     "test": "cross-env NODE_ENV=test jest",
-    "check:docs": "node scripts/check-exception-doc.js"
+    "check:docs": "node scripts/check-exception-doc.js",
+    "check:openapi": "node scripts/check-openapi.js",
+    "export:openapi": "node scripts/export-openapi.js",
+    "report:regression": "node scripts/report-regression.js"
   },
   "keywords": [],
   "author": "",

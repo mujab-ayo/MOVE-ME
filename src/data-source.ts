@@ -10,7 +10,7 @@ import { Reservation } from "./entities/reservation.entity";
 import { Payment } from "./entities/payment.entity";
 import { Notification } from "./entities/notification.entity";
 
-dotenv.config({ path: process.env.NODE_ENV === 'test' ? '.env.test' : '.env' });
+dotenv.config({ path: process.env.NODE_ENV === 'test' ? '.env.test' : '.env', quiet: true });
 
 const isSsl = process.env.DATABASE_URL?.includes("sslmode=require");
 

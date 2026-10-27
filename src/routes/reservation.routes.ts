@@ -12,7 +12,7 @@ const router = Router();
  * @openapi
  * /reservations/{id}/payments:
  *   post:
- *     summary: Initiate simulated payment
+ *     summary: Initiate simulated payment for a held reservation (PASSENGER role only).
  *     description: Creates a PENDING payment for a reservation if the hold is still valid.
  *     tags:
  *       - Payments
@@ -35,6 +35,8 @@ const router = Router();
  *             properties:
  *               idempotencyKey:
  *                 type: string
+ *           example:
+ *             idempotencyKey: "123e4567-e89b-12d3-a456-426614174099"
  *     responses:
  *       201:
  *         description: Payment initiated successfully
@@ -48,19 +50,57 @@ const router = Router();
  *                   format: uuid
  *                 status:
  *                   type: string
- *                   example: PENDING
+ *             example:
+ *               paymentId: "123e4567-e89b-12d3-a456-426614174000"
+ *               status: "PENDING"
  *       400:
  *         description: Invalid reservation ID format
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Invalid reservation ID format"
  *       401:
- *         description: Authentication required
+ *         description: Authentication token missing or invalid
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Authentication token missing or invalid"
  *       403:
  *         description: Forbidden - not your reservation or wrong role
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Forbidden: not your reservation"
  *       404:
  *         description: Reservation not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Reservation not found"
  *       409:
- *         description: Reservation not pending payment or hold already expired
+ *         description: Reservation not pending payment, hold already expired, or duplicate idempotency key
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Reservation is no longer pending payment or hold has expired"
  *       500:
  *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Internal server error"
  */
 router.post(
   "/:id/payments",
@@ -152,7 +192,7 @@ router.post(
  * @openapi
  * /reservations/{id}:
  *   get:
- *     summary: Get reservation details
+ *     summary: Retrieve reservation details (PASSENGER owner or departure DRIVER only).
  *     description: Retrieves details of a reservation. Accessible only by the passenger who owns it or the driver who owns the departure. Opportunistically updates any PENDING_PAYMENT reservation whose hold elapsed to EXPIRED before responding.
  *     tags:
  *       - Bookings
@@ -169,16 +209,99 @@ router.post(
  *     responses:
  *       200:
  *         description: Reservation details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                   format: uuid
+ *                 departure_id:
+ *                   type: string
+ *                   format: uuid
+ *                 passenger_id:
+ *                   type: string
+ *                   format: uuid
+ *                 status:
+ *                   type: string
+ *                 fare_amount:
+ *                   type: string
+ *                 hold_expires_at:
+ *                   type: string
+ *                   format: date-time
+ *                 created_at:
+ *                   type: string
+ *                   format: date-time
+ *                 payments:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                         format: uuid
+ *                       status:
+ *                         type: string
+ *                       amount:
+ *                         type: string
+ *                       refunded_at:
+ *                         type: string
+ *                         format: date-time
+ *                         nullable: true
+ *             example:
+ *               id: "123e4567-e89b-12d3-a456-426614174000"
+ *               departure_id: "123e4567-e89b-12d3-a456-426614174001"
+ *               passenger_id: "123e4567-e89b-12d3-a456-426614174002"
+ *               status: "CONFIRMED"
+ *               fare_amount: "3000.00"
+ *               hold_expires_at: "2026-10-25T10:15:00.000Z"
+ *               created_at: "2026-10-25T10:00:00.000Z"
+ *               payments:
+ *                 - id: "123e4567-e89b-12d3-a456-426614174003"
+ *                   status: "SUCCEEDED"
+ *                   amount: "3000.00"
+ *                   refunded_at: null
  *       400:
  *         description: Invalid reservation ID format
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Invalid reservation ID format"
  *       401:
  *         description: Authentication required or invalid token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Authentication token missing or invalid"
  *       403:
  *         description: Forbidden - not your reservation, not your departure, or insufficient permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Forbidden: not your reservation"
  *       404:
  *         description: Reservation not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Reservation not found"
  *       500:
  *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Internal server error"
  */
 router.get(
   "/:id",
@@ -279,7 +402,7 @@ router.get(
  * @openapi
  * /reservations/{id}/cancel:
  *   post:
- *     summary: Cancel a confirmed reservation
+ *     summary: Cancel a confirmed reservation and issue a simulated refund (PASSENGER role only).
  *     description: Passenger cancels a confirmed reservation before departure time and before trip start. Triggers simulated refund.
  *     tags:
  *       - Bookings
@@ -293,6 +416,13 @@ router.get(
  *           type: string
  *           format: uuid
  *         description: Reservation ID
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *           example: {}
  *     responses:
  *       200:
  *         description: Reservation cancelled successfully with simulated refund
@@ -306,31 +436,71 @@ router.get(
  *                   format: uuid
  *                 status:
  *                   type: string
- *                   example: CANCELLED
  *                 refund:
  *                   type: object
  *                   properties:
  *                     simulated:
  *                       type: boolean
- *                       example: true
  *                     paymentId:
  *                       type: string
  *                       format: uuid
  *                     amount:
  *                       type: string
- *                       example: "3000.00"
+ *             example:
+ *               reservationId: "123e4567-e89b-12d3-a456-426614174000"
+ *               status: "CANCELLED"
+ *               refund:
+ *                 simulated: true
+ *                 paymentId: "123e4567-e89b-12d3-a456-426614174003"
+ *                 amount: "3000.00"
  *       400:
  *         description: Invalid reservation ID format
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Invalid reservation ID format"
  *       401:
- *         description: Authentication required
+ *         description: Authentication token missing or invalid
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Authentication token missing or invalid"
  *       403:
  *         description: Forbidden - not your reservation or not a passenger
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Forbidden: not your reservation"
  *       404:
  *         description: Reservation not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Reservation not found"
  *       409:
  *         description: Conflict - reservation not confirmed, departure time passed, or trip already in progress
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Only a confirmed reservation can be cancelled"
  *       500:
  *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Internal server error"
  */
 router.post(
   "/:id/cancel",

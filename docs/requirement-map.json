@@ -1,0 +1,666 @@
+{
+  "MM-01": [
+    {
+      "file": "src/routes/auth.routes.test.ts",
+      "testName": "registers a new passenger and returns 201 with userId"
+    },
+    {
+      "file": "src/routes/auth.routes.test.ts",
+      "testName": "returns 409 if email is already taken"
+    },
+    {
+      "file": "src/routes/auth.routes.test.ts",
+      "testName": "registers a new driver and returns 201 with userId and driverEnabled: false"
+    },
+    {
+      "file": "src/routes/auth.routes.test.ts",
+      "testName": "returns 200 with JWT containing sub and role ONLY"
+    },
+    {
+      "file": "src/routes/auth.routes.test.ts",
+      "testName": "returns 401 on incorrect password"
+    },
+    {
+      "file": "src/routes/driver_and_admin.test.ts",
+      "testName": "registers a vehicle for driver A"
+    },
+    {
+      "file": "src/routes/driver_and_admin.test.ts",
+      "testName": "returns 409 when registrationIdentifier is already in use"
+    },
+    {
+      "file": "src/routes/driver_and_admin.test.ts",
+      "testName": "rejects vehicle creation with seatCapacity 0 with 400"
+    },
+    {
+      "file": "src/routes/driver_and_admin.test.ts",
+      "testName": "returns ONLY vehicles owned by calling driver"
+    },
+    {
+      "file": "src/routes/driver_and_admin.test.ts",
+      "testName": "enables a driver"
+    },
+    {
+      "file": "src/routes/departure-publish.routes.test.ts",
+      "testName": "403 driver not enabled"
+    },
+    {
+      "file": "src/routes/departure-publish.routes.test.ts",
+      "testName": "403 vehicle owned by another driver"
+    },
+    {
+      "file": "src/routes/lifecycle.routes.test.ts",
+      "testName": "a disabled driver gets 403"
+    },
+    {
+      "file": "src/routes/lifecycle.routes.test.ts",
+      "testName": "a driver using another driver's vehicle gets 403"
+    }
+  ],
+  "MM-02": [
+    {
+      "file": "src/routes/departure-publish.routes.test.ts",
+      "testName": "201 publish SOLO (capacity 1, fare and duration snapshotted from the route)"
+    },
+    {
+      "file": "src/routes/departure-publish.routes.test.ts",
+      "testName": "201 publish POOLED (capacity equals the vehicle's seats)"
+    },
+    {
+      "file": "src/routes/departure-publish.routes.test.ts",
+      "testName": "409 overlapping departure for the same driver"
+    },
+    {
+      "file": "src/routes/departure-publish.routes.test.ts",
+      "testName": "201 back-to-back departure starting exactly when the first one ends"
+    },
+    {
+      "file": "src/routes/departure-publish.routes.test.ts",
+      "testName": "409 overlap on the same vehicle"
+    },
+    {
+      "file": "src/routes/lifecycle.routes.test.ts",
+      "testName": "publishing an overlapping departure is rejected (409)"
+    },
+    {
+      "file": "src/routes/lifecycle.routes.test.ts",
+      "testName": "an overlap for the same driver gets 409 and an overlap for the same vehicle (different driver) gets 409"
+    },
+    {
+      "file": "src/routes/lifecycle.routes.test.ts",
+      "testName": "a back-to-back departure starting exactly when the first ends gets 201"
+    },
+    {
+      "file": "src/db/constraints.test.ts",
+      "testName": "1. Two overlapping departures for the same driver fail with Postgres code 23P01"
+    },
+    {
+      "file": "src/db/constraints.test.ts",
+      "testName": "2. Two overlapping departures for the same vehicle but different drivers fail with 23P01"
+    },
+    {
+      "file": "src/db/constraints.test.ts",
+      "testName": "3. A departure that starts exactly when another ends (same driver and vehicle) succeeds"
+    }
+  ],
+  "MM-03": [
+    {
+      "file": "src/routes/departure.routes.test.ts",
+      "testName": "immediate search: returns departures within now and now + 15 minutes, soonest first"
+    },
+    {
+      "file": "src/routes/departure.routes.test.ts",
+      "testName": "scheduled search: returns departures >= datetime ordered by departure_time ASC with limit 20"
+    },
+    {
+      "file": "src/routes/departure.routes.test.ts",
+      "testName": "returns 200 with { results: [], empty: true } when no departures match (never 404)"
+    },
+    {
+      "file": "src/routes/departure.routes.test.ts",
+      "testName": "regression: scheduled search excludes already-passed departures when searching with a past datetime"
+    },
+    {
+      "file": "src/routes/departure.routes.test.ts",
+      "testName": "live available_capacity: a SOLO departure with one active reservation does not appear in results"
+    },
+    {
+      "file": "src/routes/departure.routes.test.ts",
+      "testName": "live available_capacity: POOLED capacity-4 departure with 1 CONFIRMED and 1 PENDING (valid hold) shows available_capacity 2, and once expired shows 3 with no sweep"
+    }
+  ],
+  "MM-04": [
+    {
+      "file": "src/routes/booking.routes.test.ts",
+      "testName": "Test 1: SOLO departure (capacity 1), 10 different passengers, 10 concurrent requests -> exactly 1 success (201) and 9 conflicts (409), exactly 1 active row"
+    },
+    {
+      "file": "src/routes/acceptance.routes.test.ts",
+      "testName": "3. First acceptance scenario end to end: A books a SOLO departure, pays, SUCCESS callback. Assert A's reservation is CONFIRMED, B's booking attempt gets 409, and the departure no longer appears in GET /departures/search"
+    },
+    {
+      "file": "src/routes/lifecycle.routes.test.ts",
+      "testName": "a passenger finds a SOLO departure in search, books, pays (SUCCESS); a second passenger cannot book it (409); the driver arrives, departs and completes; the passenger's list shows the reservation COMPLETED"
+    }
+  ],
+  "MM-05": [
+    {
+      "file": "src/routes/booking.routes.test.ts",
+      "testName": "Test 2: POOLED departure (capacity 3), same 10 passengers, 10 concurrent requests -> exactly 3 succeed (201) and 7 rejected (409), exactly 3 active rows"
+    },
+    {
+      "file": "src/routes/booking.routes.test.ts",
+      "testName": "Test 3: One passenger firing 2 concurrent bookings on the same departure (capacity >= 2) -> at most one succeeds, other gets 409 (unique index backstop)"
+    },
+    {
+      "file": "src/routes/booking.routes.test.ts",
+      "testName": "Test 4c: every reservation on a pooled departure has fare_amount equal to departure's fare_amount regardless of join order"
+    },
+    {
+      "file": "src/routes/lifecycle.routes.test.ts",
+      "testName": "a POOLED departure with three passengers: one cancels and is refunded; a fourth passenger then books the released seat; the driver arrives (booking now returns 409), departs and completes; the remaining reservations end COMPLETED and the cancelled one stays CANCELLED"
+    },
+    {
+      "file": "src/db/constraints.test.ts",
+      "testName": "6. Two active (PENDING_PAYMENT or CONFIRMED) reservations for the same passenger and departure fail with 23505; a new one succeeds once the first is CANCELLED"
+    }
+  ],
+  "MM-06": [
+    {
+      "file": "src/routes/payment.routes.test.ts",
+      "testName": "creates a payment row with status PENDING, fare amount, idempotency key and returns 201"
+    },
+    {
+      "file": "src/routes/payment.routes.test.ts",
+      "testName": "updates payment to SUCCEEDED and reservation to CONFIRMED when hold is still valid"
+    },
+    {
+      "file": "src/routes/payment.routes.test.ts",
+      "testName": "updates payment to FAILED and reservation to FAILED when outcome is FAILURE"
+    },
+    {
+      "file": "src/routes/payment.routes.test.ts",
+      "testName": "treats late success callback as a no-op, marks payment EXPIRED, does NOT confirm reservation"
+    },
+    {
+      "file": "src/routes/payment.routes.test.ts",
+      "testName": "treats duplicate callback on already-succeeded payment as no-op"
+    },
+    {
+      "file": "src/routes/payment.routes.test.ts",
+      "testName": "rejects 409 if hold_expires_at has already passed and flips reservation to EXPIRED"
+    },
+    {
+      "file": "src/routes/payment.routes.test.ts",
+      "testName": "returns 409 when POST /reservations/:id/payments is called twice with same client idempotencyKey"
+    },
+    {
+      "file": "src/routes/acceptance.routes.test.ts",
+      "testName": "1. Failure releases capacity: SOLO departure; passenger A books, pays, callback FAILURE; then passenger B books the same departure and gets 201"
+    },
+    {
+      "file": "src/routes/acceptance.routes.test.ts",
+      "testName": "2. Expiry releases capacity: SOLO departure; A books and initiates payment; set hold_expires_at into the past; a late SUCCESS callback returns IGNORED; then B books the same departure and gets 201. A's reservation ends EXPIRED, never CONFIRMED"
+    }
+  ],
+  "MM-07": [
+    {
+      "file": "src/routes/trip.routes.test.ts",
+      "testName": "1. Happy path: arrive, depart, complete in order, with the right status and timestamp each time; CONFIRMED reservations become COMPLETED"
+    },
+    {
+      "file": "src/routes/trip.routes.test.ts",
+      "testName": "2. Out-of-order transitions (depart before arrive, complete before depart, arrive twice) return 409"
+    },
+    {
+      "file": "src/routes/trip.routes.test.ts",
+      "testName": "4. Delayed trip: driver has departure A (arrived or in progress) and a later, non-overlapping departure B whose scheduled time has already passed (set B's departure_time into the past directly in the database). Arriving at B returns 409 while A is active, and succeeds after A completes."
+    },
+    {
+      "file": "src/routes/trip.routes.test.ts",
+      "testName": "5. Booking is closed once the trip starts: after arrive, POST /departures/:id/reservations returns 409, and the departure no longer appears in search"
+    },
+    {
+      "file": "src/routes/read-side.routes.test.ts",
+      "testName": "2. Driver departures: GET /drivers/me/departures ownership, ordering (soonest first), live available_capacity, and reservation counts."
+    },
+    {
+      "file": "src/routes/read-side.routes.test.ts",
+      "testName": "3. Passenger reservations: trip_status moving through SCHEDULED, ARRIVED, IN_PROGRESS, COMPLETED and CANCELLED reservations showing reasons."
+    },
+    {
+      "file": "src/routes/lifecycle.routes.test.ts",
+      "testName": "while a trip is active, arriving at a second departure is rejected (409) even though its scheduled time has passed"
+    },
+    {
+      "file": "src/db/constraints.test.ts",
+      "testName": "8. One driver with two departures in ARRIVED or IN_PROGRESS fails with 23505"
+    }
+  ],
+  "MM-08": [
+    {
+      "file": "src/routes/cancellation.routes.test.ts",
+      "testName": "1. Happy path: book, pay (SUCCESS), cancel. The reservation is CANCELLED with cancelled_at and the reason; the payment is REFUNDED with refunded_at; the response carries a refund amount equal to the fare."
+    },
+    {
+      "file": "src/routes/cancellation.routes.test.ts",
+      "testName": "2. Capacity is released once: after cancelling on a SOLO departure, a second passenger books it (201) and search lists it again with the right available_capacity. Cancelling again returns 409 and there is still exactly one REFUNDED payment."
+    },
+    {
+      "file": "src/routes/cancellation.routes.test.ts",
+      "testName": "3. Concurrent double cancel (Promise.all of two cancels): exactly one 200 and one 409, and exactly one refund."
+    },
+    {
+      "file": "src/routes/driver-cancellation.routes.test.ts",
+      "testName": "1. Three passengers on a POOLED departure: two paid and CONFIRMED, one PENDING_PAYMENT with a PENDING payment. After the driver cancels: all three reservations CANCELLED; the two payments REFUNDED with the correct amounts; the pending payment EXPIRED; exactly three notifications, each owned by the right passenger with the right payload; the response counts match."
+    },
+    {
+      "file": "src/routes/driver-cancellation.routes.test.ts",
+      "testName": "2. The cancelled departure no longer appears in search; booking it returns 409; the driver can publish a new departure in the same time slot (201)."
+    },
+    {
+      "file": "src/routes/driver-cancellation.routes.test.ts",
+      "testName": "4. Atomicity: make the notification insert fail inside the transaction (for example by stubbing it to throw) and assert nothing changed: the departure is still SCHEDULED, the reservations and payments are unchanged, and the response is the standard 500 error body."
+    },
+    {
+      "file": "src/routes/read-side.routes.test.ts",
+      "testName": "1. Notifications: ownership, ordering (newest first), unread filter (?unread=true), and idempotent mark-read."
+    },
+    {
+      "file": "src/routes/lifecycle.routes.test.ts",
+      "testName": "a driver cancels a booked departure: every affected passenger sees the CANCELLED reservation and a DEPARTURE_CANCELLED notification with the refund amount; the departure is gone from search"
+    }
+  ],
+  "LAST-SEAT": [
+    {
+      "file": "src/routes/booking.routes.test.ts",
+      "testName": "Test 1: SOLO departure (capacity 1), 10 different passengers, 10 concurrent requests -> exactly 1 success (201) and 9 conflicts (409), exactly 1 active row"
+    },
+    {
+      "file": "src/routes/booking.routes.test.ts",
+      "testName": "Test 2: POOLED departure (capacity 3), same 10 passengers, 10 concurrent requests -> exactly 3 succeed (201) and 7 rejected (409), exactly 3 active rows"
+    },
+    {
+      "file": "src/routes/booking.routes.test.ts",
+      "testName": "Test 3: One passenger firing 2 concurrent bookings on the same departure (capacity >= 2) -> at most one succeeds, other gets 409 (unique index backstop)"
+    },
+    {
+      "file": "src/routes/trip.routes.test.ts",
+      "testName": "6. Deterministic race: the test opens its own transaction holding SELECT ... FOR UPDATE on the departure, fires a booking (not awaited), waits about 500 ms and asserts it has not completed, then sets the departure to ARRIVED inside its own transaction and commits, then asserts the booking returns 409"
+    },
+    {
+      "file": "src/routes/cancellation.routes.test.ts",
+      "testName": "3. Concurrent double cancel (Promise.all of two cancels): exactly one 200 and one 409, and exactly one refund."
+    },
+    {
+      "file": "src/db/constraints.test.ts",
+      "testName": "6. Two active (PENDING_PAYMENT or CONFIRMED) reservations for the same passenger and departure fail with 23505; a new one succeeds once the first is CANCELLED"
+    }
+  ],
+  "DRIVER-OVERLAP": [
+    {
+      "file": "src/routes/departure-publish.routes.test.ts",
+      "testName": "409 overlapping departure for the same driver"
+    },
+    {
+      "file": "src/routes/departure-publish.routes.test.ts",
+      "testName": "201 back-to-back departure starting exactly when the first one ends"
+    },
+    {
+      "file": "src/routes/departure-publish.routes.test.ts",
+      "testName": "409 overlap on the same vehicle"
+    },
+    {
+      "file": "src/routes/lifecycle.routes.test.ts",
+      "testName": "publishing an overlapping departure is rejected (409)"
+    },
+    {
+      "file": "src/routes/lifecycle.routes.test.ts",
+      "testName": "an overlap for the same driver gets 409 and an overlap for the same vehicle (different driver) gets 409"
+    },
+    {
+      "file": "src/routes/lifecycle.routes.test.ts",
+      "testName": "a back-to-back departure starting exactly when the first ends gets 201"
+    },
+    {
+      "file": "src/db/constraints.test.ts",
+      "testName": "1. Two overlapping departures for the same driver fail with Postgres code 23P01"
+    },
+    {
+      "file": "src/db/constraints.test.ts",
+      "testName": "2. Two overlapping departures for the same vehicle but different drivers fail with 23P01"
+    },
+    {
+      "file": "src/db/constraints.test.ts",
+      "testName": "3. A departure that starts exactly when another ends (same driver and vehicle) succeeds"
+    },
+    {
+      "file": "src/db/constraints.test.ts",
+      "testName": "4. An overlapping departure succeeds when the other one has status CANCELLED"
+    },
+    {
+      "file": "src/db/constraints.test.ts",
+      "testName": "5. The function departure_end_time is IMMUTABLE (check pg_proc.provolatile = 'i')"
+    }
+  ],
+  "LATE-PAYMENT": [
+    {
+      "file": "src/routes/payment.routes.test.ts",
+      "testName": "treats late success callback as a no-op, marks payment EXPIRED, does NOT confirm reservation"
+    },
+    {
+      "file": "src/routes/acceptance.routes.test.ts",
+      "testName": "2. Expiry releases capacity: SOLO departure; A books and initiates payment; set hold_expires_at into the past; a late SUCCESS callback returns IGNORED; then B books the same departure and gets 201. A's reservation ends EXPIRED, never CONFIRMED"
+    },
+    {
+      "file": "src/routes/payment.routes.test.ts",
+      "testName": "blocks on departure lock until hold expires and safely treats callback as IGNORED / EXPIRED"
+    },
+    {
+      "file": "src/routes/payment.routes.test.ts",
+      "testName": "treats callback as IGNORED and marks payment and reservation EXPIRED when departure is IN_PROGRESS"
+    },
+    {
+      "file": "src/routes/payment.routes.test.ts",
+      "testName": "treats callback as IGNORED and marks payment and reservation EXPIRED when departure is CANCELLED"
+    },
+    {
+      "file": "src/routes/payment.routes.test.ts",
+      "testName": "treats duplicate callback on already-succeeded payment as no-op"
+    },
+    {
+      "file": "src/routes/payment.routes.test.ts",
+      "testName": "handles duplicate payment success for same reservation via one_successful_payment_per_reservation constraint as no-op"
+    },
+    {
+      "file": "src/db/constraints.test.ts",
+      "testName": "7. Two SUCCEEDED payments for the same reservation fail with 23505"
+    }
+  ],
+  "ACCESS-CONTROL": [
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "GET /drivers/me/vehicles returns 401 without token"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "GET /drivers/me/vehicles returns 403 for PASSENGER"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "GET /drivers/me/vehicles returns 403 for ADMIN"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /drivers/me/vehicles returns 401 without token"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /drivers/me/vehicles returns 403 for PASSENGER"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /drivers/me/vehicles returns 403 for ADMIN"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "GET /drivers/me/departures returns 401 without token"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "GET /drivers/me/departures returns 403 for PASSENGER"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "GET /drivers/me/departures returns 403 for ADMIN"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "GET /admin/drivers returns 401 without token"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "GET /admin/drivers returns 403 for PASSENGER"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "GET /admin/drivers returns 403 for DRIVER"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "PATCH /admin/drivers/:id/enable returns 401 without token"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "PATCH /admin/drivers/:id/enable returns 403 for PASSENGER"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "PATCH /admin/drivers/:id/enable returns 403 for DRIVER"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /departures returns 401 without token"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /departures returns 403 for PASSENGER"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /departures returns 403 for ADMIN"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "GET /departures/search returns 401 without token"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "GET /departures/search returns 403 for DRIVER"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "GET /departures/search returns 403 for ADMIN"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /departures/:id/reservations returns 401 without token"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /departures/:id/reservations returns 403 for DRIVER"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /departures/:id/reservations returns 403 for ADMIN"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /departures/:id/arrive returns 401 without token"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /departures/:id/arrive returns 403 for PASSENGER"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /departures/:id/arrive returns 403 for ADMIN"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /departures/:id/depart returns 401 without token"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /departures/:id/depart returns 403 for PASSENGER"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /departures/:id/depart returns 403 for ADMIN"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /departures/:id/complete returns 401 without token"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /departures/:id/complete returns 403 for PASSENGER"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /departures/:id/complete returns 403 for ADMIN"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /departures/:id/cancel returns 401 without token"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /departures/:id/cancel returns 403 for PASSENGER"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /departures/:id/cancel returns 403 for ADMIN"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /reservations/:id/payments returns 401 without token"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /reservations/:id/payments returns 403 for DRIVER"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /reservations/:id/payments returns 403 for ADMIN"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /reservations/:id/cancel returns 401 without token"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /reservations/:id/cancel returns 403 for DRIVER"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "POST /reservations/:id/cancel returns 403 for ADMIN"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "GET /passengers/me/reservations returns 401 without token"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "GET /passengers/me/reservations returns 403 for DRIVER"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "GET /passengers/me/reservations returns 403 for ADMIN"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "GET /passengers/me/notifications returns 401 without token"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "GET /passengers/me/notifications returns 403 for DRIVER"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "GET /passengers/me/notifications returns 403 for ADMIN"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "PATCH /notifications/:id/read returns 401 without token"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "PATCH /notifications/:id/read returns 403 for DRIVER"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "PATCH /notifications/:id/read returns 403 for ADMIN"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "GET /reservations/:id returns 401 without token"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "GET /payments/:id returns 401 without token"
+    },
+    {
+      "file": "src/routes/access-control.routes.test.ts",
+      "testName": "GET /routes returns 401 without token"
+    },
+    {
+      "file": "src/routes/payment-read.routes.test.ts",
+      "testName": "owner gets 200 with no idempotency_key"
+    },
+    {
+      "file": "src/routes/payment-read.routes.test.ts",
+      "testName": "another passenger 403"
+    },
+    {
+      "file": "src/routes/payment-read.routes.test.ts",
+      "testName": "a driver (including the departure's own driver) 403"
+    },
+    {
+      "file": "src/routes/payment-read.routes.test.ts",
+      "testName": "admin 403"
+    },
+    {
+      "file": "src/routes/payment-read.routes.test.ts",
+      "testName": "no token 401"
+    },
+    {
+      "file": "src/routes/payment-read.routes.test.ts",
+      "testName": "unknown id 404"
+    },
+    {
+      "file": "src/routes/payment-read.routes.test.ts",
+      "testName": "malformed id 400"
+    },
+    {
+      "file": "src/routes/reservation.routes.test.ts",
+      "testName": "enforces strict data ownership (Passenger A sees only their own reservations, not Passenger B's)"
+    },
+    {
+      "file": "src/routes/reservation.routes.test.ts",
+      "testName": "returns 403 if caller is Passenger B attempting to access Passenger A's reservation"
+    },
+    {
+      "file": "src/routes/reservation.routes.test.ts",
+      "testName": "returns 403 if caller is Driver B attempting to access a reservation on Driver A's departure"
+    },
+    {
+      "file": "src/routes/reservation.routes.test.ts",
+      "testName": "returns 403 if caller is ADMIN (only passenger owner or departure driver owner allowed)"
+    },
+    {
+      "file": "src/routes/reservation.routes.test.ts",
+      "testName": "returns 200 when Passenger A accesses their own reservation"
+    },
+    {
+      "file": "src/routes/reservation.routes.test.ts",
+      "testName": "returns 200 when Driver A accesses a reservation on their own departure"
+    },
+    {
+      "file": "src/routes/exception-handling.routes.test.ts",
+      "testName": "driver's response has no payments and no idempotency_key"
+    },
+    {
+      "file": "src/routes/exception-handling.routes.test.ts",
+      "testName": "passenger's response has payments without idempotency_key"
+    },
+    {
+      "file": "src/routes/reservation.routes.test.ts",
+      "testName": "data exposure: driver's response has no payments and no idempotency_key"
+    },
+    {
+      "file": "src/routes/reservation.routes.test.ts",
+      "testName": "data exposure: passenger's response has payments without idempotency_key"
+    }
+  ]
+}

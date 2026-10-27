@@ -23,7 +23,7 @@ module.exports = async function globalSetup() {
   const envTestHost = extractHost(envTestConfig.DATABASE_URL);
 
   // 2. Call dotenv.config({ path: '.env.test' }) so process.env.DATABASE_URL holds what tests actually use
-  dotenv.config({ path: '.env.test' });
+  dotenv.config({ path: '.env.test', quiet: true });
 
   const activeHost = extractHost(process.env.DATABASE_URL);
 

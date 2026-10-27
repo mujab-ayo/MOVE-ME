@@ -10,7 +10,7 @@ const router = Router();
  * @openapi
  * /notifications/{id}/read:
  *   patch:
- *     summary: Mark notification as read
+ *     summary: Mark a passenger notification as read (PASSENGER role only).
  *     description: Marks a notification as read if it is currently unread. Idempotent. Requires PASSENGER role and ownership.
  *     tags:
  *       - Bookings
@@ -24,6 +24,13 @@ const router = Router();
  *           type: string
  *           format: uuid
  *         description: Notification UUID
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *           example: {}
  *     responses:
  *       200:
  *         description: Notification marked as read
@@ -38,14 +45,53 @@ const router = Router();
  *                 readAt:
  *                   type: string
  *                   format: date-time
+ *                 read_at:
+ *                   type: string
+ *                   format: date-time
+ *             example:
+ *               id: "123e4567-e89b-12d3-a456-426614174000"
+ *               readAt: "2026-10-25T12:00:00.000Z"
+ *               read_at: "2026-10-25T12:00:00.000Z"
  *       400:
  *         description: Invalid notification ID format
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Invalid notification ID format"
  *       401:
- *         description: Authentication required
+ *         description: Authentication token missing or invalid
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Authentication token missing or invalid"
  *       403:
- *         description: Forbidden - not your notification
+ *         description: Forbidden - not your notification or insufficient permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Forbidden: not your notification"
  *       404:
  *         description: Notification not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Notification not found"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Internal server error"
  */
 router.patch(
   "/:id/read",

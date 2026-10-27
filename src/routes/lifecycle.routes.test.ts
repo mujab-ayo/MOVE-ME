@@ -12,7 +12,7 @@ import { Reservation } from "../entities/reservation.entity";
 import { Payment } from "../entities/payment.entity";
 import { Notification } from "../entities/notification.entity";
 
-dotenv.config({ path: process.env.NODE_ENV === "test" ? ".env.test" : ".env" });
+dotenv.config({ path: process.env.NODE_ENV === "test" ? ".env.test" : ".env", quiet: true });
 
 describe("Acceptance Scenarios & End-to-End Lifecycle Integration (MM-01 through MM-08)", () => {
   const secret = process.env.JWT_SECRET || "ride_pooling_capstone_dev_secret_key_2026";

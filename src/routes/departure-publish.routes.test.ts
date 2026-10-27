@@ -8,7 +8,7 @@ import { Vehicle } from "../entities/vehicle.entity";
 import { Route } from "../entities/route.entity";
 import { Departure } from "../entities/departure.entity";
 
-dotenv.config({ path: process.env.NODE_ENV === "test" ? ".env.test" : ".env" });
+dotenv.config({ path: process.env.NODE_ENV === "test" ? ".env.test" : ".env", quiet: true });
 
 describe("Departure Publishing Integration (POST /departures / MM-02)", () => {
   const secret = process.env.JWT_SECRET || "ride_pooling_capstone_dev_secret_key_2026";

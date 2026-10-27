@@ -25,7 +25,7 @@ const loginSchema = z.object({
  * @openapi
  * /auth/register/passenger:
  *   post:
- *     summary: Register a new passenger
+ *     summary: Register a new passenger account (Public).
  *     description: Creates a new user account with PASSENGER role.
  *     tags:
  *       - Auth
@@ -42,18 +42,23 @@ const loginSchema = z.object({
  *               email:
  *                 type: string
  *                 format: email
- *                 example: passenger@example.com
+ *                 example: ada.passenger@example.com
  *               password:
  *                 type: string
  *                 format: password
  *                 minLength: 6
- *                 example: Password123!
+ *                 example: SecurePassword123!
  *               fullName:
  *                 type: string
- *                 example: Jane Doe
+ *                 example: Ada Lovelace
  *               phone:
  *                 type: string
  *                 example: "+2348012345678"
+ *           example:
+ *             email: ada.passenger@example.com
+ *             password: SecurePassword123!
+ *             fullName: Ada Lovelace
+ *             phone: "+2348012345678"
  *     responses:
  *       201:
  *         description: Passenger registered successfully
@@ -65,46 +70,27 @@ const loginSchema = z.object({
  *                 userId:
  *                   type: string
  *                   format: uuid
- *                   example: 123e4567-e89b-12d3-a456-426614174000
+ *                   example: 9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d
+ *             example:
+ *               userId: 9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d
  *       400:
- *         description: Validation error
+ *         description: Validation failed
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Validation failed
- *                 details:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       field:
- *                         type: string
- *                       message:
- *                         type: string
+ *               $ref: '#/components/schemas/Error'
  *       409:
  *         description: Email is already registered
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Email is already registered
+ *               $ref: '#/components/schemas/Error'
  *       500:
  *         description: Internal server error
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Internal server error
+ *               $ref: '#/components/schemas/Error'
  */
 // POST /auth/register/passenger
 router.post(
@@ -146,7 +132,7 @@ router.post(
  * @openapi
  * /auth/register/driver:
  *   post:
- *     summary: Register a new driver
+ *     summary: Register a new driver account pending admin verification (Public).
  *     description: Creates a new user account with DRIVER role. The driver account initially has driver_enabled set to false until verified and enabled by an admin.
  *     tags:
  *       - Auth
@@ -163,18 +149,23 @@ router.post(
  *               email:
  *                 type: string
  *                 format: email
- *                 example: driver@example.com
+ *                 example: kofi.driver@example.com
  *               password:
  *                 type: string
  *                 format: password
  *                 minLength: 6
- *                 example: Password123!
+ *                 example: DriverPassword123!
  *               fullName:
  *                 type: string
- *                 example: John Driver
+ *                 example: Kofi Mensah
  *               phone:
  *                 type: string
  *                 example: "+2348087654321"
+ *           example:
+ *             email: kofi.driver@example.com
+ *             password: DriverPassword123!
+ *             fullName: Kofi Mensah
+ *             phone: "+2348087654321"
  *     responses:
  *       201:
  *         description: Driver registered successfully
@@ -186,49 +177,31 @@ router.post(
  *                 userId:
  *                   type: string
  *                   format: uuid
- *                   example: 123e4567-e89b-12d3-a456-426614174000
+ *                   example: 1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed
  *                 driverEnabled:
  *                   type: boolean
  *                   example: false
+ *             example:
+ *               userId: 1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed
+ *               driverEnabled: false
  *       400:
- *         description: Validation error
+ *         description: Validation failed
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Validation failed
- *                 details:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       field:
- *                         type: string
- *                       message:
- *                         type: string
+ *               $ref: '#/components/schemas/Error'
  *       409:
  *         description: Email is already registered
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Email is already registered
+ *               $ref: '#/components/schemas/Error'
  *       500:
  *         description: Internal server error
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Internal server error
+ *               $ref: '#/components/schemas/Error'
  */
 // POST /auth/register/driver
 router.post(
@@ -273,7 +246,7 @@ router.post(
  * @openapi
  * /auth/login:
  *   post:
- *     summary: Login user
+ *     summary: Authenticate with email and password to receive a JWT access token (Public).
  *     description: Authenticates a user by email and password, returning a JWT token with sub and role claims.
  *     tags:
  *       - Auth
@@ -290,11 +263,14 @@ router.post(
  *               email:
  *                 type: string
  *                 format: email
- *                 example: user@example.com
+ *                 example: ada.passenger@example.com
  *               password:
  *                 type: string
  *                 format: password
- *                 example: Password123!
+ *                 example: SecurePassword123!
+ *           example:
+ *             email: ada.passenger@example.com
+ *             password: SecurePassword123!
  *     responses:
  *       200:
  *         description: Successful login
@@ -314,45 +290,27 @@ router.post(
  *                     - DRIVER
  *                     - ADMIN
  *                   example: PASSENGER
+ *             example:
+ *               accessToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *               role: PASSENGER
  *       400:
- *         description: Validation error
+ *         description: Validation failed
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Validation failed
- *                 details:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       field:
- *                         type: string
- *                       message:
- *                         type: string
+ *               $ref: '#/components/schemas/Error'
  *       401:
  *         description: Invalid email or password
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Invalid email or password
+ *               $ref: '#/components/schemas/Error'
  *       500:
  *         description: Internal server error
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Internal server error
+ *               $ref: '#/components/schemas/Error'
  */
 // POST /auth/login
 router.post(

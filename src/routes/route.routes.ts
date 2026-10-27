@@ -9,7 +9,7 @@ const router = Router();
  * @openapi
  * /routes:
  *   get:
- *     summary: List active routes
+ *     summary: Retrieve all active routes in the system (PASSENGER, DRIVER, or ADMIN roles).
  *     description: Returns all active routes ordered by pickup point. Accessible by any authenticated user regardless of role.
  *     tags:
  *       - Departures
@@ -28,42 +28,39 @@ const router = Router();
  *                   id:
  *                     type: string
  *                     format: uuid
- *                     example: 123e4567-e89b-12d3-a456-426614174000
  *                   pickup_point:
  *                     type: string
- *                     example: Ikeja City Mall, Alausa, Ikeja
  *                   dropoff_point:
  *                     type: string
- *                     example: Victoria Island Financial District, Lagos
  *                   base_duration_minutes:
  *                     type: integer
- *                     example: 45
  *                   base_fare_solo:
  *                     type: string
- *                     example: "7500.00"
  *                   base_fare_per_seat:
  *                     type: string
- *                     example: "2500.00"
+ *             example:
+ *               - id: "123e4567-e89b-12d3-a456-426614174000"
+ *                 pickup_point: "Ikeja City Mall, Alausa, Ikeja"
+ *                 dropoff_point: "Victoria Island Financial District, Lagos"
+ *                 base_duration_minutes: 45
+ *                 base_fare_solo: "7500.00"
+ *                 base_fare_per_seat: "2500.00"
  *       401:
  *         description: Authentication token missing or invalid
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Authentication token missing or invalid
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Authentication token missing or invalid"
  *       500:
  *         description: Internal server error
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Internal server error
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Internal server error"
  */
 router.get(
   "/",

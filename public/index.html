@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MoveMe - Commuter Ride-Sharing</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9A%A1%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/app/styles.css">
+</head>
+<body>
+  <div id="app" class="app-layout">
+    <header class="app-header">
+      <div class="header-container">
+        <div class="brand">
+          <span class="brand-icon">⚡</span>
+          <span class="brand-name">MoveMe</span>
+        </div>
+        <div id="header-user-area" class="user-area" style="display: none;">
+          <span id="header-email" class="user-email"></span>
+          <span id="header-role" class="badge badge-role"></span>
+          <button id="header-logout-btn" class="btn btn-sm btn-outline" type="button">Log out</button>
+        </div>
+      </div>
+    </header>
+
+    <main id="main-content" class="main-content">
+      <!-- Injected by app.js -->
+    </main>
+
+    <div id="toast-container" class="toast-container"></div>
+
+    <aside id="api-log-drawer" class="api-log-panel collapsed">
+      <div id="api-log-header" class="api-log-header">
+        <div class="api-log-title-group">
+          <span class="api-log-title">API Log</span>
+          <span id="api-log-count" class="badge badge-count">0</span>
+        </div>
+        <div class="api-log-actions">
+          <button id="api-log-toggle" class="btn btn-xs btn-outline" type="button">▲ Expand</button>
+        </div>
+      </div>
+      <div id="api-log-body" class="api-log-body">
+        <div id="api-log-list" class="api-log-list">
+          <div class="api-log-empty">No API calls recorded yet.</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <script type="module" src="/app/js/app.js"></script>
+</body>
+</html>

@@ -37,16 +37,16 @@ describe("GET /docs", () => {
     expect(res.headers["content-type"]).toContain("text/html");
   });
 
-  it("should return valid OpenAPI spec with 6 tags and documented routes at /docs.json", async () => {
+  it("should return valid OpenAPI spec with 7 tags and documented routes at /docs.json", async () => {
     const res = await request(app).get("/docs.json");
     expect(res.status).toBe(200);
     expect(res.body.openapi).toMatch(/^3\./);
 
     // Verify tag definitions
     const tagNames = res.body.tags.map((t: any) => t.name);
-    expect(tagNames).toHaveLength(6);
+    expect(tagNames).toHaveLength(7);
     expect(tagNames).toEqual(
-      expect.arrayContaining(["Auth", "Vehicles", "Admin", "Departures", "Bookings", "Payments"])
+      expect.arrayContaining(["Auth", "Vehicles", "Admin", "Departures", "Bookings", "Payments", "Health"])
     );
 
     // Verify routes exist in paths

@@ -15,7 +15,7 @@ const callbackSchema = z.object({
  * @openapi
  * /payments/{id}/callback:
  *   post:
- *     summary: Payment provider callback
+ *     summary: Process payment provider outcome webhook (Simulated payment gateway / Public).
  *     description: Internal simulated PSP webhook callback to settle payments. Performs critical MM-06 validity checks.
  *     tags:
  *       - Payments
@@ -41,6 +41,8 @@ const callbackSchema = z.object({
  *                 enum: [SUCCESS, FAILURE]
  *               idempotencyKey:
  *                 type: string
+ *           example:
+ *             outcome: "SUCCESS"
  *     responses:
  *       200:
  *         description: Callback processed (SUCCEEDED/FAILED) or safely ignored as no-op (IGNORED for late or duplicate callbacks)
@@ -55,22 +57,48 @@ const callbackSchema = z.object({
  *                     - SUCCEEDED
  *                     - FAILED
  *                     - IGNORED
- *                   example: SUCCEEDED
  *                 reservationStatus:
  *                   type: string
- *                   example: CONFIRMED
  *                 message:
  *                   type: string
- *                   example: Late callback on expired reservation - payment marked EXPIRED
  *                 paymentStatus:
  *                   type: string
- *                   example: EXPIRED
+ *             examples:
+ *               succeeded:
+ *                 summary: Payment succeeded and reservation confirmed
+ *                 value:
+ *                   status: "SUCCEEDED"
+ *                   reservationStatus: "CONFIRMED"
+ *               ignored:
+ *                 summary: Late or duplicate callback safely ignored
+ *                 value:
+ *                   status: "IGNORED"
+ *                   message: "Late callback on expired reservation - payment marked EXPIRED"
+ *                   paymentStatus: "EXPIRED"
  *       400:
  *         description: Invalid payment ID format or payload
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Invalid callback payload: outcome must be 'SUCCESS' or 'FAILURE'"
  *       404:
  *         description: Payment or associated reservation not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Payment not found"
  *       500:
  *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Internal server error"
  */
 router.post(
   "/:id/callback",
@@ -320,7 +348,7 @@ router.post(
  * @openapi
  * /payments/{id}:
  *   get:
- *     summary: Get payment details
+ *     summary: Retrieve payment status and details (PASSENGER role only, reservation owner).
  *     description: Retrieves details of a payment.
  *     tags:
  *       - Payments
@@ -337,12 +365,76 @@ router.post(
  *     responses:
  *       200:
  *         description: Payment details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                   format: uuid
+ *                 reservation_id:
+ *                   type: string
+ *                   format: uuid
+ *                 amount:
+ *                   type: string
+ *                 status:
+ *                   type: string
+ *                 completed_at:
+ *                   type: string
+ *                   format: date-time
+ *                   nullable: true
+ *                 refunded_at:
+ *                   type: string
+ *                   format: date-time
+ *                   nullable: true
+ *             example:
+ *               id: "123e4567-e89b-12d3-a456-426614174000"
+ *               reservation_id: "123e4567-e89b-12d3-a456-426614174001"
+ *               amount: "3000.00"
+ *               status: "SUCCEEDED"
+ *               completed_at: "2026-10-25T10:05:00.000Z"
+ *               refunded_at: null
  *       400:
  *         description: Invalid payment ID format
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Invalid payment ID format"
  *       401:
- *         description: Authentication required
+ *         description: Authentication token missing or invalid
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Authentication token missing or invalid"
+ *       403:
+ *         description: Forbidden - not your payment
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Forbidden: not your payment"
  *       404:
  *         description: Payment not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Payment not found"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Internal server error"
  */
 router.get(
   "/:id",

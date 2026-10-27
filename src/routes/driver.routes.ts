@@ -18,7 +18,7 @@ const createVehicleSchema = z.object({
  * @openapi
  * /drivers/me/vehicles:
  *   post:
- *     summary: Add vehicle
+ *     summary: Register a new vehicle for the authenticated driver (DRIVER role only).
  *     description: Registers a new vehicle for the authenticated driver.
  *     tags:
  *       - Vehicles
@@ -37,14 +37,15 @@ const createVehicleSchema = z.object({
  *             properties:
  *               description:
  *                 type: string
- *                 example: Toyota Camry 2021 (Silver)
  *               registrationIdentifier:
  *                 type: string
- *                 example: LAG-789-XY
  *               seatCapacity:
  *                 type: integer
  *                 minimum: 1
- *                 example: 4
+ *           example:
+ *             description: "Toyota Camry 2021 (Silver)"
+ *             registrationIdentifier: "LAG-789-XY"
+ *             seatCapacity: 4
  *     responses:
  *       201:
  *         description: Vehicle registered successfully
@@ -56,66 +57,48 @@ const createVehicleSchema = z.object({
  *                 vehicleId:
  *                   type: string
  *                   format: uuid
- *                   example: 123e4567-e89b-12d3-a456-426614174000
+ *             example:
+ *               vehicleId: "123e4567-e89b-12d3-a456-426614174000"
  *       400:
  *         description: Validation error
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Validation failed
- *                 details:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       field:
- *                         type: string
- *                       message:
- *                         type: string
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Validation failed"
  *       401:
  *         description: Authentication required or invalid token
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Authentication token missing or invalid
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Authentication token missing or invalid"
  *       403:
  *         description: Forbidden - driver role required
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: "Forbidden: insufficient permissions"
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Forbidden: insufficient permissions"
  *       409:
  *         description: Registration identifier already registered
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Registration identifier already registered
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Registration identifier already registered"
  *       500:
  *         description: Internal server error
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Internal server error
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Internal server error"
  */
 // POST /drivers/me/vehicles - register a vehicle for authenticated driver
 router.post(
@@ -162,7 +145,7 @@ router.post(
  * @openapi
  * /drivers/me/vehicles:
  *   get:
- *     summary: List my vehicles
+ *     summary: Retrieve all vehicles owned by the authenticated driver (DRIVER role only).
  *     description: Retrieves all vehicles belonging to the authenticated driver. Enforces strict data ownership so drivers only see their own vehicles.
  *     tags:
  *       - Vehicles
@@ -181,57 +164,52 @@ router.post(
  *                   id:
  *                     type: string
  *                     format: uuid
- *                     example: 123e4567-e89b-12d3-a456-426614174000
  *                   driver_id:
  *                     type: string
  *                     format: uuid
- *                     example: 123e4567-e89b-12d3-a456-426614174001
  *                   description:
  *                     type: string
- *                     example: Toyota Camry 2021 (Silver)
  *                   registration_identifier:
  *                     type: string
- *                     example: LAG-789-XY
  *                   seat_capacity:
  *                     type: integer
- *                     example: 4
  *                   active:
  *                     type: boolean
- *                     example: true
  *                   created_at:
  *                     type: string
  *                     format: date-time
- *                     example: "2026-10-02T08:00:00.000Z"
+ *             example:
+ *               - id: "123e4567-e89b-12d3-a456-426614174000"
+ *                 driver_id: "123e4567-e89b-12d3-a456-426614174001"
+ *                 description: "Toyota Camry 2021 (Silver)"
+ *                 registration_identifier: "LAG-789-XY"
+ *                 seat_capacity: 4
+ *                 active: true
+ *                 created_at: "2026-10-02T08:00:00.000Z"
  *       401:
  *         description: Authentication required or invalid token
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Authentication token missing or invalid
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Authentication token missing or invalid"
  *       403:
  *         description: Forbidden - driver role required
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: "Forbidden: insufficient permissions"
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Forbidden: insufficient permissions"
  *       500:
  *         description: Internal server error
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Internal server error
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Internal server error"
  */
 // GET /drivers/me/vehicles - list vehicles belonging to authenticated driver
 router.get(
@@ -255,7 +233,7 @@ router.get(
  * @openapi
  * /drivers/me/departures:
  *   get:
- *     summary: List driver departures
+ *     summary: List all departures published by the authenticated driver (DRIVER role only).
  *     description: Retrieves all departures published by the authenticated driver, ordered soonest first (departure_time ASC). Each item includes status, mode, departure_time, capacity, available_capacity, and counts of confirmed and pending reservations.
  *     tags:
  *       - Departures
@@ -276,29 +254,62 @@ router.get(
  *                     format: uuid
  *                   status:
  *                     type: string
- *                     example: SCHEDULED
  *                   mode:
  *                     type: string
- *                     example: POOLED
  *                   departure_time:
  *                     type: string
  *                     format: date-time
  *                   capacity:
  *                     type: integer
- *                     example: 4
  *                   available_capacity:
  *                     type: integer
- *                     example: 2
  *                   confirmed_reservations:
  *                     type: integer
- *                     example: 1
  *                   pending_reservations:
  *                     type: integer
- *                     example: 1
+ *             example:
+ *               - id: "123e4567-e89b-12d3-a456-426614174000"
+ *                 driver_id: "123e4567-e89b-12d3-a456-426614174001"
+ *                 vehicle_id: "123e4567-e89b-12d3-a456-426614174002"
+ *                 route_id: "123e4567-e89b-12d3-a456-426614174003"
+ *                 status: "SCHEDULED"
+ *                 mode: "POOLED"
+ *                 departure_time: "2026-11-01T08:00:00.000Z"
+ *                 duration_minutes: 60
+ *                 fare_amount: "25.00"
+ *                 capacity: 4
+ *                 available_capacity: 3
+ *                 confirmed_reservations: 1
+ *                 pending_reservations: 0
+ *                 pickup_point: "Downtown Station"
+ *                 dropoff_point: "Airport Terminal"
+ *                 vehicle_description: "Toyota Camry 2021 (Silver)"
+ *                 vehicle_registration: "LAG-789-XY"
+ *                 created_at: "2026-10-25T10:00:00.000Z"
  *       401:
- *         description: Authentication required
+ *         description: Authentication required or invalid token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Authentication token missing or invalid"
  *       403:
  *         description: Forbidden - driver role required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Forbidden: insufficient permissions"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Internal server error"
  */
 router.get(
   "/me/departures",

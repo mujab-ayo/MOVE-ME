@@ -9,7 +9,7 @@ const router = Router();
  * @openapi
  * /passengers/me/reservations:
  *   get:
- *     summary: List caller's own reservations
+ *     summary: List all reservations belonging to the authenticated passenger (PASSENGER role only).
  *     description: Retrieves all reservations belonging to the authenticated passenger, ordered by created_at descending. Opportunistically updates any stale PENDING_PAYMENT reservations whose hold has elapsed to EXPIRED before responding. Includes trip_status and departure timestamps.
  *     tags:
  *       - Bookings
@@ -36,13 +36,10 @@ const router = Router();
  *                     format: uuid
  *                   status:
  *                     type: string
- *                     example: CONFIRMED
  *                   trip_status:
  *                     type: string
- *                     example: SCHEDULED
  *                   fare_amount:
  *                     type: string
- *                     example: "3000.00"
  *                   hold_expires_at:
  *                     type: string
  *                     format: date-time
@@ -68,12 +65,44 @@ const router = Router();
  *                   cancellation_reason:
  *                     type: string
  *                     nullable: true
+ *             example:
+ *               - id: "123e4567-e89b-12d3-a456-426614174000"
+ *                 departure_id: "123e4567-e89b-12d3-a456-426614174001"
+ *                 passenger_id: "123e4567-e89b-12d3-a456-426614174002"
+ *                 status: "CONFIRMED"
+ *                 trip_status: "SCHEDULED"
+ *                 fare_amount: "3000.00"
+ *                 hold_expires_at: "2026-10-25T10:15:00.000Z"
+ *                 created_at: "2026-10-25T10:00:00.000Z"
+ *                 arrived_at: null
+ *                 departed_at: null
+ *                 completed_at: null
+ *                 cancelled_at: null
+ *                 cancellation_reason: null
  *       401:
  *         description: Authentication token missing or invalid
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Authentication token missing or invalid"
  *       403:
  *         description: Forbidden - passenger role required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Forbidden: insufficient permissions"
  *       500:
  *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Internal server error"
  */
 router.get(
   "/me/reservations",
@@ -138,7 +167,7 @@ router.get(
  * @openapi
  * /passengers/me/notifications:
  *   get:
- *     summary: List passenger notifications
+ *     summary: List all notifications for the authenticated passenger (PASSENGER role only).
  *     description: Retrieves all notifications belonging to the authenticated passenger, ordered newest first (created_at DESC). Supports ?unread=true query filter.
  *     tags:
  *       - Bookings
@@ -178,12 +207,39 @@ router.get(
  *                   created_at:
  *                     type: string
  *                     format: date-time
+ *             example:
+ *               - id: "123e4567-e89b-12d3-a456-426614174000"
+ *                 user_id: "123e4567-e89b-12d3-a456-426614174002"
+ *                 type: "RESERVATION_CONFIRMED"
+ *                 payload:
+ *                   reservationId: "123e4567-e89b-12d3-a456-426614174000"
+ *                   departureId: "123e4567-e89b-12d3-a456-426614174001"
+ *                 read_at: null
+ *                 created_at: "2026-10-25T10:05:00.000Z"
  *       401:
- *         description: Authentication required
+ *         description: Authentication token missing or invalid
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Authentication token missing or invalid"
  *       403:
  *         description: Forbidden - passenger role required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Forbidden: insufficient permissions"
  *       500:
  *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Internal server error"
  */
 router.get(
   "/me/notifications",

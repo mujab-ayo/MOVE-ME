@@ -16,7 +16,7 @@ const enableDriverSchema = z.object({
  * @openapi
  * /admin/drivers:
  *   get:
- *     summary: Pending drivers
+ *     summary: List prospective drivers pending administrative approval (Admin only).
  *     description: Lists drivers with optional status filtering. When status is set to pending, only drivers awaiting enablement (driver_enabled=false) are returned. Requires ADMIN role.
  *     tags:
  *       - Admin
@@ -44,11 +44,11 @@ const enableDriverSchema = z.object({
  *                   id:
  *                     type: string
  *                     format: uuid
- *                     example: 123e4567-e89b-12d3-a456-426614174000
+ *                     example: 1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed
  *                   email:
  *                     type: string
  *                     format: email
- *                     example: driver@example.com
+ *                     example: kofi.driver@example.com
  *                   role:
  *                     type: string
  *                     example: DRIVER
@@ -59,36 +59,30 @@ const enableDriverSchema = z.object({
  *                     type: string
  *                     format: date-time
  *                     example: "2026-10-02T08:00:00.000Z"
+ *             example:
+ *               - id: "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed"
+ *                 email: "kofi.driver@example.com"
+ *                 role: "DRIVER"
+ *                 driver_enabled: false
+ *                 created_at: "2026-10-02T08:00:00.000Z"
  *       401:
- *         description: Authentication required or invalid token
+ *         description: Authentication token missing or invalid
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Authentication token missing or invalid
+ *               $ref: '#/components/schemas/Error'
  *       403:
  *         description: Forbidden - admin role required
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: "Forbidden: insufficient permissions"
+ *               $ref: '#/components/schemas/Error'
  *       500:
  *         description: Internal server error
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Internal server error
+ *               $ref: '#/components/schemas/Error'
  */
 // GET /admin/drivers - list drivers (e.g. status=pending)
 router.get(
@@ -124,7 +118,7 @@ router.get(
  * @openapi
  * /admin/drivers/{id}/enable:
  *   patch:
- *     summary: Enable driver
+ *     summary: Enable or disable driver publishing privileges (Admin only).
  *     description: Enables or disables a driver account. Enabling a driver is required before they can publish departures. Requires ADMIN role.
  *     tags:
  *       - Admin
@@ -150,6 +144,8 @@ router.get(
  *               enabled:
  *                 type: boolean
  *                 example: true
+ *           example:
+ *             enabled: true
  *     responses:
  *       200:
  *         description: Driver enablement status updated successfully
@@ -161,69 +157,43 @@ router.get(
  *                 driverId:
  *                   type: string
  *                   format: uuid
- *                   example: 123e4567-e89b-12d3-a456-426614174000
+ *                   example: 1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed
  *                 enabled:
  *                   type: boolean
  *                   example: true
+ *             example:
+ *               driverId: 1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed
+ *               enabled: true
  *       400:
- *         description: Validation error
+ *         description: Validation failed
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Validation failed
- *                 details:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       field:
- *                         type: string
- *                       message:
- *                         type: string
+ *               $ref: '#/components/schemas/Error'
  *       401:
- *         description: Authentication required or invalid token
+ *         description: Authentication token missing or invalid
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Authentication token missing or invalid
+ *               $ref: '#/components/schemas/Error'
  *       403:
  *         description: Forbidden - admin role required
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: "Forbidden: insufficient permissions"
+ *               $ref: '#/components/schemas/Error'
  *       404:
  *         description: Driver not found
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Driver not found
+ *               $ref: '#/components/schemas/Error'
  *       500:
  *         description: Internal server error
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Internal server error
+ *               $ref: '#/components/schemas/Error'
  */
 // PATCH /admin/drivers/:id/enable - enable/disable a driver account
 router.patch(

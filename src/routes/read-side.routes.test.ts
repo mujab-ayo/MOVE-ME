@@ -12,7 +12,7 @@ import { Reservation } from "../entities/reservation.entity";
 import { Payment } from "../entities/payment.entity";
 import { Notification } from "../entities/notification.entity";
 
-dotenv.config({ path: process.env.NODE_ENV === "test" ? ".env.test" : ".env" });
+dotenv.config({ path: process.env.NODE_ENV === "test" ? ".env.test" : ".env", quiet: true });
 
 describe("Read-side Endpoints Integration (MM-07/08 / docs/design.md Section 4)", () => {
   const secret = process.env.JWT_SECRET || "ride_pooling_capstone_dev_secret_key_2026";

@@ -5,7 +5,7 @@ import crypto from "crypto";
 import app from "../app";
 import { UserRole } from "../entities/user.entity";
 
-dotenv.config({ path: process.env.NODE_ENV === "test" ? ".env.test" : ".env" });
+dotenv.config({ path: process.env.NODE_ENV === "test" ? ".env.test" : ".env", quiet: true });
 
 describe("Access Control & Role-Based Middleware Integration", () => {
   const secret = process.env.JWT_SECRET || "ride_pooling_capstone_dev_secret_key_2026";

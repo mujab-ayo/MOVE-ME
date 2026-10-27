@@ -52,7 +52,7 @@ const searchDeparturesQuerySchema = z
  * @openapi
  * /departures/search:
  *   get:
- *     summary: Search departures
+ *     summary: Search scheduled departures by route, mode, and timing (PASSENGER role only).
  *     description: Searches scheduled departures by route, mode, and timing. Immediate mode looks for departures within 15 minutes from now. Scheduled mode queries departures matching or after the given datetime. Requires PASSENGER role.
  *     tags:
  *       - Departures
@@ -118,103 +118,92 @@ const searchDeparturesQuerySchema = z
  *                         format: uuid
  *                       pickup_point:
  *                         type: string
- *                         example: Ikeja Bus Terminal
  *                       pickupPoint:
  *                         type: string
- *                         example: Ikeja Bus Terminal
  *                       dropoff_point:
  *                         type: string
- *                         example: Victoria Island (Eko Hotel)
  *                       dropoffPoint:
  *                         type: string
- *                         example: Victoria Island (Eko Hotel)
  *                       departure_time:
  *                         type: string
  *                         format: date-time
- *                         example: "2026-10-02T12:00:00.000Z"
  *                       departureTime:
  *                         type: string
  *                         format: date-time
- *                         example: "2026-10-02T12:00:00.000Z"
  *                       driver_name:
  *                         type: string
- *                         example: John Driver
  *                       driverName:
  *                         type: string
- *                         example: John Driver
  *                       driver:
  *                         type: string
- *                         example: John Driver
  *                       fare_amount:
  *                         type: string
- *                         example: "5000.00"
  *                       fareAmount:
  *                         type: string
- *                         example: "5000.00"
  *                       mode:
  *                         type: string
- *                         example: SOLO
  *                       capacity:
  *                         type: integer
- *                         example: 1
  *                       available_capacity:
  *                         type: integer
- *                         example: 1
  *                       availableCapacity:
  *                         type: integer
- *                         example: 1
  *                 empty:
  *                   type: boolean
- *                   example: false
+ *             example:
+ *               results:
+ *                 - id: "123e4567-e89b-12d3-a456-426614174000"
+ *                   departureId: "123e4567-e89b-12d3-a456-426614174000"
+ *                   route_id: "123e4567-e89b-12d3-a456-426614174001"
+ *                   routeId: "123e4567-e89b-12d3-a456-426614174001"
+ *                   pickup_point: "Ikeja Bus Terminal"
+ *                   pickupPoint: "Ikeja Bus Terminal"
+ *                   dropoff_point: "Victoria Island (Eko Hotel)"
+ *                   dropoffPoint: "Victoria Island (Eko Hotel)"
+ *                   departure_time: "2026-11-01T12:00:00.000Z"
+ *                   departureTime: "2026-11-01T12:00:00.000Z"
+ *                   driver_name: "John Driver"
+ *                   driverName: "John Driver"
+ *                   driver: "John Driver"
+ *                   fare_amount: "5000.00"
+ *                   fareAmount: "5000.00"
+ *                   mode: "SOLO"
+ *                   capacity: 1
+ *                   available_capacity: 1
+ *                   availableCapacity: 1
+ *               empty: false
  *       400:
  *         description: Validation error
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Validation failed
- *                 details:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       field:
- *                         type: string
- *                       message:
- *                         type: string
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Validation failed"
  *       401:
  *         description: Authentication required or invalid token
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Authentication token missing or invalid
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Authentication token missing or invalid"
  *       403:
  *         description: Forbidden - passenger role required
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: "Forbidden: insufficient permissions"
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Forbidden: insufficient permissions"
  *       500:
  *         description: Internal server error
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Internal server error
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Internal server error"
  */
 // GET /departures/search - search departures (immediate vs scheduled)
 router.get(
@@ -330,7 +319,7 @@ router.get(
  * @openapi
  * /departures:
  *   post:
- *     summary: Publish departure
+ *     summary: Publish a new scheduled departure (DRIVER role only, driver must be enabled).
  *     description: Publishes a new departure. Requires DRIVER role, driver must be enabled (driver_enabled=true), vehicle must belong to the driver and be active, and route must exist and be active. Prevents overlapping departures via database exclusion constraints.
  *     tags:
  *       - Departures
@@ -351,21 +340,22 @@ router.get(
  *               vehicleId:
  *                 type: string
  *                 format: uuid
- *                 example: 123e4567-e89b-12d3-a456-426614174000
  *               routeId:
  *                 type: string
  *                 format: uuid
- *                 example: 7b13bc6e-19d2-4e89-b7e1-8cbdf6a92892
  *               mode:
  *                 type: string
  *                 enum:
  *                   - SOLO
  *                   - POOLED
- *                 example: SOLO
  *               departureTime:
  *                 type: string
  *                 format: date-time
- *                 example: "2026-10-02T12:00:00Z"
+ *           example:
+ *             vehicleId: "123e4567-e89b-12d3-a456-426614174000"
+ *             routeId: "7b13bc6e-19d2-4e89-b7e1-8cbdf6a92892"
+ *             mode: "SOLO"
+ *             departureTime: "2026-11-01T12:00:00.000Z"
  *     responses:
  *       201:
  *         description: Departure published successfully
@@ -377,88 +367,68 @@ router.get(
  *                 departureId:
  *                   type: string
  *                   format: uuid
- *                   example: 123e4567-e89b-12d3-a456-426614174000
  *                 capacity:
  *                   type: integer
- *                   example: 1
  *                 fareAmount:
  *                   type: string
- *                   example: "5000.00"
  *                 durationMinutes:
  *                   type: integer
- *                   example: 45
  *                 status:
  *                   type: string
- *                   example: SCHEDULED
+ *             example:
+ *               departureId: "123e4567-e89b-12d3-a456-426614174000"
+ *               capacity: 1
+ *               fareAmount: "5000.00"
+ *               durationMinutes: 45
+ *               status: "SCHEDULED"
  *       400:
  *         description: Validation error
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Validation failed
- *                 details:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       field:
- *                         type: string
- *                       message:
- *                         type: string
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Validation failed"
  *       401:
  *         description: Authentication required or invalid token
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Authentication token missing or invalid
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Authentication token missing or invalid"
  *       403:
  *         description: Driver not enabled or vehicle does not belong to driver
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Driver is not enabled to publish departures
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Driver is not enabled to publish departures"
  *       404:
  *         description: Route not found
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Route not found
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Route not found"
  *       409:
  *         description: Overlapping departure detected
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Overlapping departure detected for this driver or vehicle
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Overlapping departure detected for this driver or vehicle"
  *       500:
  *         description: Internal server error
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Internal server error
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Internal server error"
  */
 // POST /departures - publish a departure (driver only, gate-checked)
 router.post(
@@ -542,7 +512,7 @@ export const HOLD_MINUTES = parseFloat(process.env.HOLD_MINUTES || "5");
  * @openapi
  * /departures/{id}/reservations:
  *   post:
- *     summary: Create departure reservation
+ *     summary: Reserve a seat on a scheduled departure (PASSENGER role only).
  *     description: Reserves a seat on a scheduled departure using the capacity-guard transaction. Holds capacity for 5 minutes (HOLD_MINUTES) in PENDING_PAYMENT status. Identical code path for SOLO and POOLED departures. Requires PASSENGER role.
  *     tags:
  *       - Bookings
@@ -556,6 +526,13 @@ export const HOLD_MINUTES = parseFloat(process.env.HOLD_MINUTES || "5");
  *           type: string
  *           format: uuid
  *         description: Departure UUID to reserve
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *           example: {}
  *     responses:
  *       201:
  *         description: Reservation created successfully
@@ -567,77 +544,66 @@ export const HOLD_MINUTES = parseFloat(process.env.HOLD_MINUTES || "5");
  *                 reservationId:
  *                   type: string
  *                   format: uuid
- *                   example: 123e4567-e89b-12d3-a456-426614174000
  *                 status:
  *                   type: string
- *                   example: PENDING_PAYMENT
  *                 holdExpiresAt:
  *                   type: string
  *                   format: date-time
- *                   example: "2026-10-02T12:05:00.000Z"
  *                 fareAmount:
  *                   type: string
- *                   example: "2500.00"
+ *             example:
+ *               reservationId: "123e4567-e89b-12d3-a456-426614174000"
+ *               status: "PENDING_PAYMENT"
+ *               holdExpiresAt: "2026-11-01T12:05:00.000Z"
+ *               fareAmount: "2500.00"
  *       400:
  *         description: Invalid departure ID format
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Invalid departure ID format
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Invalid departure ID format"
  *       401:
  *         description: Authentication required or invalid token
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Authentication token missing or invalid
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Authentication token missing or invalid"
  *       403:
  *         description: Forbidden - passenger role required
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: "Forbidden: insufficient permissions"
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Forbidden: insufficient permissions"
  *       404:
  *         description: Departure not found
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Departure not found
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Departure not found"
  *       409:
  *         description: Departure ineligible, no capacity, or duplicate active reservation
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: No available capacity on this departure
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "No available capacity on this departure"
  *       500:
  *         description: Internal server error
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Internal server error
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Internal server error"
  */
 // POST /departures/:id/reservations - reserve a seat (capacity-guard transaction)
 router.post(
@@ -758,7 +724,7 @@ router.post(
  * @openapi
  * /departures/{id}/arrive:
  *   post:
- *     summary: Mark departure arrival
+ *     summary: Mark vehicle arrival at departure pickup point (DRIVER role only, departure owner).
  *     description: Driver marks vehicle arrival at pickup point. Departure status must be SCHEDULED. Sets status to ARRIVED and arrived_at timestamp. Driver can only have one active trip in progress or arrived.
  *     tags:
  *       - Departures
@@ -772,6 +738,13 @@ router.post(
  *           type: string
  *           format: uuid
  *         description: Departure UUID
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *           example: {}
  *     responses:
  *       200:
  *         description: Arrival marked successfully
@@ -785,20 +758,61 @@ router.post(
  *                   format: uuid
  *                 status:
  *                   type: string
- *                   example: ARRIVED
  *                 arrivedAt:
  *                   type: string
  *                   format: date-time
+ *             example:
+ *               departureId: "123e4567-e89b-12d3-a456-426614174000"
+ *               status: "ARRIVED"
+ *               arrivedAt: "2026-11-01T11:55:00.000Z"
  *       400:
  *         description: Invalid departure ID format
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Invalid departure ID format"
  *       401:
- *         description: Authentication required
+ *         description: Authentication token missing or invalid
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Authentication token missing or invalid"
  *       403:
  *         description: Forbidden (not a driver or not the departure owner)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Forbidden: you do not own this departure"
  *       404:
  *         description: Departure not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Departure not found"
  *       409:
  *         description: Invalid state transition or active trip already in progress
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Cannot arrive: departure status is ARRIVED, expected SCHEDULED"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Internal server error"
  */
 router.post(
   "/:id/arrive",
@@ -888,7 +902,7 @@ router.post(
  * @openapi
  * /departures/{id}/depart:
  *   post:
- *     summary: Mark departure underway
+ *     summary: Mark departure trip underway (DRIVER role only, departure owner).
  *     description: Driver marks departure underway (trip start). Departure status must be ARRIVED. Sets status to IN_PROGRESS and departed_at timestamp.
  *     tags:
  *       - Departures
@@ -902,6 +916,13 @@ router.post(
  *           type: string
  *           format: uuid
  *         description: Departure UUID
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *           example: {}
  *     responses:
  *       200:
  *         description: Trip marked in progress successfully
@@ -915,20 +936,61 @@ router.post(
  *                   format: uuid
  *                 status:
  *                   type: string
- *                   example: IN_PROGRESS
  *                 departedAt:
  *                   type: string
  *                   format: date-time
+ *             example:
+ *               departureId: "123e4567-e89b-12d3-a456-426614174000"
+ *               status: "IN_PROGRESS"
+ *               departedAt: "2026-11-01T12:00:00.000Z"
  *       400:
  *         description: Invalid departure ID format
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Invalid departure ID format"
  *       401:
- *         description: Authentication required
+ *         description: Authentication token missing or invalid
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Authentication token missing or invalid"
  *       403:
  *         description: Forbidden (not a driver or not the departure owner)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Forbidden: you do not own this departure"
  *       404:
  *         description: Departure not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Departure not found"
  *       409:
  *         description: Invalid state transition
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Cannot depart: departure status is SCHEDULED, expected ARRIVED"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Internal server error"
  */
 router.post(
   "/:id/depart",
@@ -1018,7 +1080,7 @@ router.post(
  * @openapi
  * /departures/{id}/complete:
  *   post:
- *     summary: Mark departure completed
+ *     summary: Mark departure trip as completed (DRIVER role only, departure owner).
  *     description: Driver marks departure completed. Departure status must be IN_PROGRESS. Sets status to COMPLETED, completed_at timestamp, and moves all CONFIRMED reservations on this departure to COMPLETED in the same transaction.
  *     tags:
  *       - Departures
@@ -1032,6 +1094,13 @@ router.post(
  *           type: string
  *           format: uuid
  *         description: Departure UUID
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *           example: {}
  *     responses:
  *       200:
  *         description: Trip marked completed successfully
@@ -1045,20 +1114,61 @@ router.post(
  *                   format: uuid
  *                 status:
  *                   type: string
- *                   example: COMPLETED
  *                 completedAt:
  *                   type: string
  *                   format: date-time
+ *             example:
+ *               departureId: "123e4567-e89b-12d3-a456-426614174000"
+ *               status: "COMPLETED"
+ *               completedAt: "2026-11-01T12:45:00.000Z"
  *       400:
  *         description: Invalid departure ID format
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Invalid departure ID format"
  *       401:
- *         description: Authentication required
+ *         description: Authentication token missing or invalid
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Authentication token missing or invalid"
  *       403:
  *         description: Forbidden (not a driver or not the departure owner)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Forbidden: you do not own this departure"
  *       404:
  *         description: Departure not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Departure not found"
  *       409:
  *         description: Invalid state transition
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Cannot complete: departure status is ARRIVED, expected IN_PROGRESS"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Internal server error"
  */
 router.post(
   "/:id/complete",
@@ -1149,7 +1259,7 @@ router.post(
  * @openapi
  * /departures/{id}/cancel:
  *   post:
- *     summary: Cancel departure
+ *     summary: Cancel a scheduled or arrived departure (DRIVER role only, departure owner).
  *     description: Driver cancels a scheduled or arrived departure. Cancels all active reservations with cancellation_reason DEPARTURE_CANCELLED, marks SUCCEEDED payments as REFUNDED, marks PENDING payments as EXPIRED, generates passenger notifications, and frees the driver and vehicle time slots.
  *     tags:
  *       - Departures
@@ -1163,6 +1273,13 @@ router.post(
  *           type: string
  *           format: uuid
  *         description: Departure UUID
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *           example: {}
  *     responses:
  *       200:
  *         description: Departure cancelled successfully
@@ -1176,10 +1293,8 @@ router.post(
  *                   format: uuid
  *                 status:
  *                   type: string
- *                   example: CANCELLED
  *                 cancelledReservations:
  *                   type: integer
- *                   example: 3
  *                 refunds:
  *                   type: array
  *                   items:
@@ -1190,19 +1305,61 @@ router.post(
  *                         format: uuid
  *                       amount:
  *                         type: string
- *                         example: "3000.00"
+ *             example:
+ *               departureId: "123e4567-e89b-12d3-a456-426614174000"
+ *               status: "CANCELLED"
+ *               cancelledReservations: 3
+ *               refunds:
+ *                 - reservationId: "123e4567-e89b-12d3-a456-426614174001"
+ *                   amount: "3000.00"
  *       400:
  *         description: Invalid departure ID format
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Invalid departure ID format"
  *       401:
- *         description: Authentication required
+ *         description: Authentication token missing or invalid
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Authentication token missing or invalid"
  *       403:
  *         description: Forbidden (not driver or not departure owner)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Forbidden: you do not own this departure"
  *       404:
  *         description: Departure not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Departure not found"
  *       409:
  *         description: Invalid state transition
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Cannot cancel departure: status is IN_PROGRESS, expected SCHEDULED or ARRIVED"
  *       500:
  *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Internal server error"
  */
 router.post(
   "/:id/cancel",

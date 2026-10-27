@@ -1,4 +1,5 @@
 import express, { Request, Response, NextFunction } from "express";
+import path from "path";
 import swaggerUi from "swagger-ui-express";
 
 import authRouter from "./routes/auth.routes";
@@ -69,10 +70,41 @@ app.get("/docs.json", (_req: Request, res: Response) => {
   res.send(swaggerSpec);
 });
 
+/**
+ * @openapi
+ * /health:
+ *   get:
+ *     summary: Check service operational health and database readiness (Public).
+ *     description: Returns 200 with status ok when the service is healthy.
+ *     tags:
+ *       - Health
+ *     responses:
+ *       200:
+ *         description: Service is healthy
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: ok
+ *             example:
+ *               status: ok
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // Health check endpoint
 app.get("/health", (_req: Request, res: Response) => {
   res.status(200).json({ status: "ok" });
 });
+
+// Serve frontend static files
+app.use("/app", express.static(path.join(__dirname, "..", "public")));
 
 // 404 handler for unknown routes
 app.use((_req: Request, res: Response) => {
