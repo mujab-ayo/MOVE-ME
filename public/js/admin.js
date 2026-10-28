@@ -33,9 +33,10 @@ function createWhatCanIDoBox() {
  * @param {Object} currentUser Currently authenticated user
  */
 export function renderAdminScreen(container, currentUser) {
-  container.replaceChildren();
+  try {
+    container.replaceChildren();
 
-  const adminWrapper = el("div", { className: "admin-screen-container" });
+    const adminWrapper = el("div", { className: "admin-screen-container" });
 
   // Screen Header
   const header = el(
@@ -87,11 +88,12 @@ export function renderAdminScreen(container, currentUser) {
     const listEl = document.getElementById("admin-drivers-list");
     if (!listEl) return;
 
-    listEl.replaceChildren(
-      el("div", { className: "loading-state" },
-        el("span", { className: "spinner-text", text: "Loading pending drivers..." })
-      )
-    );
+    try {
+      listEl.replaceChildren(
+        el("div", { className: "loading-state" },
+          el("span", { className: "spinner-text", text: "Loading pending drivers..." })
+        )
+      );
 
     const { status, ok, data } = await api("GET", "/admin/drivers?status=pending");
 
@@ -177,8 +179,22 @@ export function renderAdminScreen(container, currentUser) {
 
     const responsiveWrap = el("div", { className: "table-responsive" }, table);
     listEl.replaceChildren(responsiveWrap);
+    } catch (err) {
+      console.error("Error loading pending drivers:", err);
+      showToast(err.message || String(err), "error");
+      listEl.replaceChildren(
+        el("div", { className: "alert alert-danger", text: `Error: ${err.message || String(err)}` })
+      );
+    }
   }
 
   // Initial load
   loadPendingDrivers();
+  } catch (err) {
+    console.error("Error rendering admin screen:", err);
+    showToast(err.message || String(err), "error");
+    container.replaceChildren(
+      el("div", { className: "alert alert-danger", text: `Error loading admin screen: ${err.message || String(err)}` })
+    );
+  }
 }

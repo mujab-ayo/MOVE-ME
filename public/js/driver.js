@@ -39,76 +39,84 @@ function getInTenMinutesString() {
  * Main entry point: Renders the Driver Portal into container.
  */
 export async function renderDriverScreen(container, user) {
-  // Check if session previously flagged waiting for approval
-  if (user?.id && sessionStorage.getItem(`driver_waiting_${user.id}`) === "true") {
-    isDriverWaitingApproval = true;
-  }
+  try {
+    // Check if session previously flagged waiting for approval
+    if (user?.id && sessionStorage.getItem(`driver_waiting_${user.id}`) === "true") {
+      isDriverWaitingApproval = true;
+    }
 
-  container.replaceChildren();
+    container.replaceChildren();
 
-  const wrapper = el("div", { className: "driver-portal" });
+    const wrapper = el("div", { className: "driver-portal" });
 
-  // Waiting for admin approval banner (if flagged)
-  if (isDriverWaitingApproval) {
-    wrapper.appendChild(createApprovalBanner());
-  }
+    // Waiting for admin approval banner (if flagged)
+    if (isDriverWaitingApproval) {
+      wrapper.appendChild(createApprovalBanner());
+    }
 
-  // Collapsible Help Box
-  const whatCanIDo = el(
-    "details",
-    { className: "what-can-i-do card" },
-    el("summary", { className: "what-can-i-do-summary", text: "What can I do here?" }),
-    el(
-      "div",
-      { className: "what-can-i-do-body" },
-      el("p", {
-        text: "Register your vehicles and manage your commuter fleet. Once enabled by an administrator, publish SOLO or POOLED departures on active routes. Track seat reservations, update trip status as you arrive, depart, and complete trips, or cancel departures with automated passenger refunds.",
-      })
-    )
-  );
-  wrapper.appendChild(whatCanIDo);
+    // Collapsible Help Box
+    const whatCanIDo = el(
+      "details",
+      { className: "what-can-i-do card" },
+      el("summary", { className: "what-can-i-do-summary", text: "What can I do here?" }),
+      el(
+        "div",
+        { className: "what-can-i-do-body" },
+        el("p", {
+          text: "Register your vehicles and manage your commuter fleet. Once enabled by an administrator, publish SOLO or POOLED departures on active routes. Track seat reservations, update trip status as you arrive, depart, and complete trips, or cancel departures with automated passenger refunds.",
+        })
+      )
+    );
+    wrapper.appendChild(whatCanIDo);
 
-  // Sub-navigation tabs
-  const tabNav = el("div", { className: "driver-tabs-nav", role: "tablist" });
+    // Sub-navigation tabs
+    const tabNav = el("div", { className: "driver-tabs-nav", role: "tablist" });
 
-  const tabs = [
-    { id: "vehicles", label: "Vehicles" },
-    { id: "publish", label: "Publish" },
-    { id: "departures", label: "My departures" },
-  ];
+    const tabs = [
+      { id: "vehicles", label: "Vehicles" },
+      { id: "publish", label: "Publish" },
+      { id: "departures", label: "My departures" },
+    ];
 
-  tabs.forEach((tab) => {
-    const btn = el("button", {
-      id: `driver-tab-btn-${tab.id}`,
-      className: `driver-tab-btn ${activeDriverTab === tab.id ? "active" : ""}`,
-      type: "button",
-      role: "tab",
-      text: tab.label,
-      onclick: () => {
-        activeDriverTab = tab.id;
-        updateActiveTabUI();
-      },
+    tabs.forEach((tab) => {
+      const btn = el("button", {
+        id: `driver-tab-btn-${tab.id}`,
+        className: `driver-tab-btn ${activeDriverTab === tab.id ? "active" : ""}`,
+        type: "button",
+        role: "tab",
+        text: tab.label,
+        onclick: () => {
+          activeDriverTab = tab.id;
+          updateActiveTabUI();
+        },
+      });
+      tabNav.appendChild(btn);
     });
-    tabNav.appendChild(btn);
-  });
 
-  wrapper.appendChild(tabNav);
+    wrapper.appendChild(tabNav);
 
-  // Tab content area
-  const contentArea = el("div", { id: "driver-tab-content", className: "driver-tab-content" });
-  wrapper.appendChild(contentArea);
-  container.appendChild(wrapper);
+    // Tab content area
+    const contentArea = el("div", { id: "driver-tab-content", className: "driver-tab-content" });
+    wrapper.appendChild(contentArea);
+    container.appendChild(wrapper);
 
-  renderTabContent();
-
-  function updateActiveTabUI() {
-    tabs.forEach((t) => {
-      const b = document.getElementById(`driver-tab-btn-${t.id}`);
-      if (b) {
-        b.classList.toggle("active", activeDriverTab === t.id);
-      }
-    });
     renderTabContent();
+
+    function updateActiveTabUI() {
+      tabs.forEach((t) => {
+        const b = document.getElementById(`driver-tab-btn-${t.id}`);
+        if (b) {
+          b.classList.toggle("active", activeDriverTab === t.id);
+        }
+      });
+      renderTabContent();
+    }
+  } catch (err) {
+    console.error("Error rendering driver screen:", err);
+    showToast(err.message || String(err), "error");
+    container.replaceChildren(
+      el("div", { className: "alert alert-danger", text: `Error loading driver portal: ${err.message || String(err)}` })
+    );
   }
 }
 
@@ -168,16 +176,24 @@ function renderTabContent() {
   if (!content) return;
   content.replaceChildren();
 
-  switch (activeDriverTab) {
-    case "vehicles":
-      renderVehiclesTab(content);
-      break;
-    case "publish":
-      renderPublishTab(content);
-      break;
-    case "departures":
-      renderDeparturesTab(content);
-      break;
+  try {
+    switch (activeDriverTab) {
+      case "vehicles":
+        renderVehiclesTab(content);
+        break;
+      case "publish":
+        renderPublishTab(content);
+        break;
+      case "departures":
+        renderDeparturesTab(content);
+        break;
+    }
+  } catch (err) {
+    console.error(`Error rendering driver tab ${activeDriverTab}:`, err);
+    showToast(err.message || String(err), "error");
+    content.replaceChildren(
+      el("div", { className: "alert alert-danger", text: `Error loading tab: ${err.message || String(err)}` })
+    );
   }
 }
 
@@ -186,7 +202,9 @@ function renderTabContent() {
    ========================================================================== */
 
 async function renderVehiclesTab(container) {
-  const card = el("div", { className: "card driver-panel" });
+  try {
+    container.replaceChildren();
+    const card = el("div", { className: "card driver-panel" });
 
   const header = el("div", { className: "panel-header-row" },
     el("h3", { className: "panel-title", text: "Registered Vehicles" }),
@@ -331,7 +349,14 @@ async function renderVehiclesTab(container) {
 
   container.appendChild(card);
 
-  loadVehiclesTable(tableArea);
+  await loadVehiclesTable(tableArea);
+  } catch (err) {
+    console.error("Error rendering vehicles tab:", err);
+    showToast(err.message || String(err), "error");
+    container.replaceChildren(
+      el("div", { className: "alert alert-danger", text: `Error loading vehicles: ${err.message || String(err)}` })
+    );
+  }
 }
 
 /**
@@ -339,7 +364,8 @@ async function renderVehiclesTab(container) {
  * (registration, make and model, colour, seats, active).
  */
 async function loadVehiclesTable(container) {
-  container.replaceChildren(el("div", { className: "loading-text", text: "Loading vehicles..." }));
+  try {
+    container.replaceChildren(el("div", { className: "loading-text", text: "Loading vehicles..." }));
 
   const { status, ok, data } = await api("GET", "/drivers/me/vehicles");
   if (!ok) {
@@ -408,6 +434,13 @@ async function loadVehiclesTable(container) {
 
   table.appendChild(tbody);
   container.replaceChildren(table);
+  } catch (err) {
+    console.error("Error loading vehicles table:", err);
+    showToast(err.message || String(err), "error");
+    container.replaceChildren(
+      el("div", { className: "alert alert-danger", text: `Error: ${err.message || String(err)}` })
+    );
+  }
 }
 
 /* ==========================================================================
@@ -415,7 +448,9 @@ async function loadVehiclesTable(container) {
    ========================================================================== */
 
 async function renderPublishTab(container) {
-  const card = el("div", { className: "card driver-panel" });
+  try {
+    container.replaceChildren();
+    const card = el("div", { className: "card driver-panel" });
   card.appendChild(el("h3", { className: "panel-title", text: "Publish a Scheduled Departure" }));
 
   // Form
@@ -627,6 +662,13 @@ async function renderPublishTab(container) {
       publishBtn.textContent = "Publish Departure";
     }
   };
+  } catch (err) {
+    console.error("Error rendering publish tab:", err);
+    showToast(err.message || String(err), "error");
+    container.replaceChildren(
+      el("div", { className: "alert alert-danger", text: `Error loading publish tab: ${err.message || String(err)}` })
+    );
+  }
 }
 
 /**
@@ -681,60 +723,77 @@ async function loadPublishFormData(routeSelect, vehicleSelect) {
    ========================================================================== */
 
 async function renderDeparturesTab(container) {
-  const card = el("div", { className: "card driver-panel" });
+  try {
+    container.replaceChildren();
+    const card = el("div", { className: "card driver-panel" });
 
-  const header = el("div", { className: "panel-header-row" },
-    el("h3", { className: "panel-title", text: "My Departures" }),
-    el("button", {
-      type: "button",
-      className: "btn btn-outline btn-sm",
-      text: "Refresh",
-      onclick: () => loadDriverDepartures(listArea),
-    })
-  );
-  card.appendChild(header);
+    const header = el("div", { className: "panel-header-row" },
+      el("h3", { className: "panel-title", text: "My Departures" }),
+      el("button", {
+        type: "button",
+        className: "btn btn-outline btn-sm",
+        text: "Refresh",
+        onclick: () => loadDriverDepartures(listArea),
+      })
+    );
+    card.appendChild(header);
 
-  const listArea = el("div", { id: "driver-departures-list-area", className: "driver-departures-list-area" });
-  card.appendChild(listArea);
-  container.appendChild(card);
+    const listArea = el("div", { id: "driver-departures-list-area", className: "driver-departures-list-area" });
+    card.appendChild(listArea);
+    container.appendChild(card);
 
-  loadDriverDepartures(listArea);
+    await loadDriverDepartures(listArea);
+  } catch (err) {
+    console.error("Error rendering departures tab:", err);
+    showToast(err.message || String(err), "error");
+    container.replaceChildren(
+      el("div", { className: "alert alert-danger", text: `Error loading departures: ${err.message || String(err)}` })
+    );
+  }
 }
 
 /**
  * Loads driver departures from GET /drivers/me/departures (ordered soonest first).
  */
 async function loadDriverDepartures(container) {
-  container.replaceChildren(el("div", { className: "loading-text", text: "Loading departures..." }));
+  try {
+    container.replaceChildren(el("div", { className: "loading-text", text: "Loading departures..." }));
 
-  const { status, ok, data } = await api("GET", "/drivers/me/departures");
-  if (!ok) {
-    const errorMsg = data?.error || "Failed to load departures";
-    showToast(errorMsg, "error", status);
+    const { status, ok, data } = await api("GET", "/drivers/me/departures");
+    if (!ok) {
+      const errorMsg = data?.error || "Failed to load departures";
+      showToast(errorMsg, "error", status);
+      container.replaceChildren(
+        el("div", { className: "alert alert-danger", text: `[${status}] ${errorMsg}` })
+      );
+      return;
+    }
+
+    const departures = Array.isArray(data) ? data : [];
+
+    if (departures.length === 0) {
+      container.replaceChildren(
+        el("div", { className: "empty-state-box", text: "No departures published yet." })
+      );
+      return;
+    }
+
+    container.replaceChildren();
+    const list = el("div", { className: "driver-departures-list" });
+
+    departures.forEach((dep) => {
+      const depCard = createDriverDepartureCard(dep, container);
+      list.appendChild(depCard);
+    });
+
+    container.appendChild(list);
+  } catch (err) {
+    console.error("Error loading driver departures:", err);
+    showToast(err.message || String(err), "error");
     container.replaceChildren(
-      el("div", { className: "alert alert-danger", text: `[${status}] ${errorMsg}` })
+      el("div", { className: "alert alert-danger", text: `Error loading departures: ${err.message || String(err)}` })
     );
-    return;
   }
-
-  const departures = Array.isArray(data) ? data : [];
-
-  if (departures.length === 0) {
-    container.replaceChildren(
-      el("div", { className: "empty-state-box", text: "No departures published yet." })
-    );
-    return;
-  }
-
-  container.replaceChildren();
-  const list = el("div", { className: "driver-departures-list" });
-
-  departures.forEach((dep) => {
-    const depCard = createDriverDepartureCard(dep, container);
-    list.appendChild(depCard);
-  });
-
-  container.appendChild(list);
 }
 
 /**

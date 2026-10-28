@@ -12,7 +12,6 @@ import { el, showToast, formatMoney, formatUtcTime, startCountdown } from "./ui.
 
 // Passenger UI State
 let activeTab = "search"; // "search" | "book-pay" | "trips" | "notifications"
-let activeReservation = null; // Currently booking/paying reservation
 let notificationPollTimer = null;
 let unreadCount = 0;
 
@@ -94,87 +93,95 @@ function updateNotificationBadge() {
  * Main entry point: Renders the entire Passenger portal inside container.
  */
 export async function renderPassengerScreen(container, user) {
-  stopPassengerTimers();
-  container.replaceChildren();
+  try {
+    stopPassengerTimers();
+    container.replaceChildren();
 
-  const wrapper = el("div", { className: "passenger-portal" });
+    const wrapper = el("div", { className: "passenger-portal" });
 
-  // Collapsible Help Box
-  const whatCanIDo = el(
-    "details",
-    { className: "what-can-i-do card" },
-    el("summary", { className: "what-can-i-do-summary", text: "What can I do here?" }),
-    el(
-      "div",
-      { className: "what-can-i-do-body" },
-      el("p", {
-        text: "Search and book scheduled or immediate departures across active commuter routes. Secure your seat with simulated card payments within the 10-minute hold window. Track live trip status, receive real-time notifications as drivers arrive or depart, and cancel reservations if plans change.",
-      })
-    )
-  );
-  wrapper.appendChild(whatCanIDo);
-
-  // Sub-navigation tabs
-  const tabNav = el("div", { className: "passenger-tabs-nav", role: "tablist" });
-
-  const tabs = [
-    { id: "search", label: "Search" },
-    { id: "book-pay", label: "Book and pay" },
-    { id: "trips", label: "My trips" },
-    { id: "notifications", label: "Notifications" },
-  ];
-
-  tabs.forEach((tab) => {
-    const btn = el(
-      "button",
-      {
-        id: `tab-btn-${tab.id}`,
-        className: `passenger-tab-btn ${activeTab === tab.id ? "active" : ""}`,
-        type: "button",
-        role: "tab",
-        onclick: () => {
-          activeTab = tab.id;
-          updateActiveTabUI();
-        },
-      },
-      el("span", { text: tab.label })
+    // Collapsible Help Box
+    const whatCanIDo = el(
+      "details",
+      { className: "what-can-i-do card" },
+      el("summary", { className: "what-can-i-do-summary", text: "What can I do here?" }),
+      el(
+        "div",
+        { className: "what-can-i-do-body" },
+        el("p", {
+          text: "Search and book scheduled or immediate departures across active commuter routes. Secure your seat with simulated card payments within the 10-minute hold window. Track live trip status, receive real-time notifications as drivers arrive or depart, and cancel reservations if plans change.",
+        })
+      )
     );
+    wrapper.appendChild(whatCanIDo);
 
-    if (tab.id === "notifications") {
-      const badge = el("span", {
-        id: "passenger-unread-badge",
-        className: "badge badge-unread-count",
-        text: String(unreadCount),
-        style: { display: unreadCount > 0 ? "inline-flex" : "none" },
-      });
-      btn.appendChild(badge);
-    }
+    // Sub-navigation tabs
+    const tabNav = el("div", { className: "passenger-tabs-nav", role: "tablist" });
 
-    tabNav.appendChild(btn);
-  });
+    const tabs = [
+      { id: "search", label: "Search" },
+      { id: "book-pay", label: "Book and pay" },
+      { id: "trips", label: "My trips" },
+      { id: "notifications", label: "Notifications" },
+    ];
 
-  wrapper.appendChild(tabNav);
+    tabs.forEach((tab) => {
+      const btn = el(
+        "button",
+        {
+          id: `tab-btn-${tab.id}`,
+          className: `passenger-tab-btn ${activeTab === tab.id ? "active" : ""}`,
+          type: "button",
+          role: "tab",
+          onclick: () => {
+            activeTab = tab.id;
+            updateActiveTabUI();
+          },
+        },
+        el("span", { text: tab.label })
+      );
 
-  // Tab content container
-  const tabContent = el("div", { id: "passenger-tab-content", className: "passenger-tab-content" });
-  wrapper.appendChild(tabContent);
-  container.appendChild(wrapper);
-
-  // Initial fetch of unread count and start 10s polling
-  fetchUnreadCount();
-  notificationPollTimer = setInterval(fetchUnreadCount, 10000);
-
-  // Render the active tab content
-  renderTabContent();
-
-  function updateActiveTabUI() {
-    tabs.forEach((t) => {
-      const b = document.getElementById(`tab-btn-${t.id}`);
-      if (b) {
-        b.classList.toggle("active", activeTab === t.id);
+      if (tab.id === "notifications") {
+        const badge = el("span", {
+          id: "passenger-unread-badge",
+          className: "badge badge-unread-count",
+          text: String(unreadCount),
+          style: { display: unreadCount > 0 ? "inline-flex" : "none" },
+        });
+        btn.appendChild(badge);
       }
+
+      tabNav.appendChild(btn);
     });
-    renderTabContent();
+
+    wrapper.appendChild(tabNav);
+
+    // Tab content container
+    const tabContent = el("div", { id: "passenger-tab-content", className: "passenger-tab-content" });
+    wrapper.appendChild(tabContent);
+    container.appendChild(wrapper);
+
+    // Initial fetch of unread count and start 10s polling
+    fetchUnreadCount();
+    notificationPollTimer = setInterval(fetchUnreadCount, 10000);
+
+    // Render the active tab content
+    await renderTabContent();
+
+    function updateActiveTabUI() {
+      tabs.forEach((t) => {
+        const b = document.getElementById(`tab-btn-${t.id}`);
+        if (b) {
+          b.classList.toggle("active", activeTab === t.id);
+        }
+      });
+      renderTabContent();
+    }
+  } catch (err) {
+    console.error("Failed to render passenger screen:", err);
+    showToast(err.message || String(err), "error");
+    container.replaceChildren(
+      el("div", { className: "alert alert-danger", text: `Error loading passenger portal: ${err.message || err}` })
+    );
   }
 }
 
@@ -196,24 +203,32 @@ function switchTab(tabId) {
 /**
  * Renders the body of the currently selected passenger tab.
  */
-function renderTabContent() {
+async function renderTabContent() {
   const content = document.getElementById("passenger-tab-content");
   if (!content) return;
   content.replaceChildren();
 
-  switch (activeTab) {
-    case "search":
-      renderSearchTab(content);
-      break;
-    case "book-pay":
-      renderBookAndPayTab(content);
-      break;
-    case "trips":
-      renderTripsTab(content);
-      break;
-    case "notifications":
-      renderNotificationsTab(content);
-      break;
+  try {
+    switch (activeTab) {
+      case "search":
+        await renderSearchTab(content);
+        break;
+      case "book-pay":
+        await renderBookAndPayTab(content);
+        break;
+      case "trips":
+        await renderTripsTab(content);
+        break;
+      case "notifications":
+        await renderNotificationsTab(content);
+        break;
+    }
+  } catch (err) {
+    console.error(`Failed to render passenger tab '${activeTab}':`, err);
+    showToast(err.message || String(err), "error");
+    content.replaceChildren(
+      el("div", { className: "alert alert-danger", text: `Error loading ${activeTab}: ${err.message || err}` })
+    );
   }
 }
 
@@ -222,8 +237,9 @@ function renderTabContent() {
    ========================================================================== */
 
 async function renderSearchTab(container) {
-  const card = el("div", { className: "card search-panel" });
-  card.appendChild(el("h3", { className: "panel-title", text: "Find a Departure" }));
+  try {
+    const card = el("div", { className: "card search-panel" });
+    card.appendChild(el("h3", { className: "panel-title", text: "Find a Departure" }));
 
   // Form controls
   const form = el("form", { className: "search-form", onsubmit: (e) => e.preventDefault() });
@@ -381,6 +397,13 @@ async function renderSearchTab(container) {
       searchBtn.textContent = "Search Departures";
     }
   };
+  } catch (err) {
+    console.error("Error rendering search tab:", err);
+    showToast(err.message || String(err), "error");
+    container.replaceChildren(
+      el("div", { className: "alert alert-danger", text: `Error loading search tab: ${err.message || err}` })
+    );
+  }
 }
 
 /**
@@ -498,22 +521,18 @@ async function handleBookDeparture(departureId, depDetails, buttonEl) {
 
     if (!ok) {
       const errorMsg = data?.error || "Booking failed";
+      console.error(`Booking departure failed (${status}):`, data);
       showToast(errorMsg, "error", status);
       return;
     }
 
-    showToast("Seat reserved! Complete payment within 5 minutes.", "success");
+    showToast("Seat reserved! Complete payment within 10 minutes.", "success");
 
-    activeReservation = {
-      id: data.reservationId || data.id,
-      status: data.status,
-      holdExpiresAt: data.holdExpiresAt || data.hold_expires_at,
-      fareAmount: data.fareAmount || data.fare_amount,
-      departure: depDetails,
-    };
-
-    // Automatically transition to Book and pay tab
+    // Automatically transition to Book and pay tab and reload the list
     switchTab("book-pay");
+  } catch (err) {
+    console.error("Error booking departure:", err);
+    showToast(err.message || String(err), "error");
   } finally {
     if (buttonEl) {
       buttonEl.disabled = false;
@@ -526,105 +545,218 @@ async function handleBookDeparture(departureId, depDetails, buttonEl) {
    TAB 2: BOOK AND PAY
    ========================================================================== */
 
-function renderBookAndPayTab(container) {
-  const card = el("div", { className: "card book-pay-panel" });
-  card.appendChild(el("h3", { className: "panel-title", text: "Book & Pay" }));
+async function renderBookAndPayTab(container) {
+  try {
+    container.replaceChildren();
 
-  if (!activeReservation) {
-    const empty = el(
-      "div",
-      { className: "empty-state-box" },
-      el("p", { text: "No active reservation awaiting payment." }),
+    const card = el("div", { className: "card book-pay-panel" });
+    const headerRow = el("div", { className: "panel-header-row" },
+      el("h3", { className: "panel-title", text: "Book & Pay" }),
       el("button", {
         type: "button",
-        className: "btn btn-primary btn-sm",
-        text: "Search departures to book",
-        onclick: () => switchTab("search"),
+        className: "btn btn-outline btn-sm",
+        text: "Refresh",
+        onclick: () => renderBookAndPayTab(container),
       })
     );
-    card.appendChild(empty);
+    card.appendChild(headerRow);
+
+    const listArea = el("div", { id: "book-pay-list-area", className: "book-pay-list-area" });
+    listArea.appendChild(el("div", { className: "loading-text", text: "Loading reservations waiting for payment..." }));
+    card.appendChild(listArea);
     container.appendChild(card);
+
+    await loadBookAndPayList(listArea, container);
+  } catch (err) {
+    console.error("Error rendering Book and pay tab:", err);
+    showToast(err.message || String(err), "error");
+    container.replaceChildren(
+      el("div", { className: "alert alert-danger", text: `Error loading Book and pay: ${err.message || String(err)}` })
+    );
+  }
+}
+
+async function loadBookAndPayList(listArea, container) {
+  const { status, ok, data } = await api("GET", "/passengers/me/reservations");
+
+  if (!ok) {
+    const errorMsg = data?.error || "Failed to load reservations";
+    showToast(errorMsg, "error", status);
+    listArea.replaceChildren(
+      el("div", { className: "alert alert-danger", text: `[${status}] ${errorMsg}` })
+    );
     return;
   }
 
-  // Active reservation display
-  const res = activeReservation;
-  const resCard = el("div", { className: "reservation-pay-card" });
+  const allReservations = Array.isArray(data) ? data : [];
+  const pendingReservations = allReservations.filter((r) => r.status === "PENDING_PAYMENT");
+
+  if (pendingReservations.length === 0) {
+    listArea.replaceChildren(
+      el("div", { className: "empty-state-box" },
+        el("p", { text: "Nothing is waiting for payment." })
+      )
+    );
+    return;
+  }
+
+  listArea.replaceChildren();
+  const list = el("div", { className: "book-pay-cards-list" });
+
+  for (const res of pendingReservations) {
+    try {
+      const resCard = await createBookAndPayCard(res, container);
+      list.appendChild(resCard);
+    } catch (err) {
+      console.error("Error rendering reservation card:", err);
+      const errorCard = el(
+        "div",
+        { className: "reservation-pay-card card card-error-fallback" },
+        el("div", { className: "card-error-title", text: "This reservation could not be displayed" }),
+        el("small", { className: "card-error-details details-line text-muted", text: err?.message || String(err) })
+      );
+      list.appendChild(errorCard);
+    }
+  }
+
+  listArea.appendChild(list);
+}
+
+/**
+ * Builds a card for a pending reservation awaiting payment.
+ */
+async function createBookAndPayCard(res, container) {
+  let holdExpiresAt = res.hold_expires_at;
+  let departureTime = res.departure_time || res.departure?.departure_time;
+  let pickupPoint = res.pickup_point || res.departure?.route?.pickup_point;
+  let dropoffPoint = res.dropoff_point || res.departure?.route?.dropoff_point;
+  let fareAmount = res.fare_amount || res.departure?.fare_amount;
+
+  // If hold_expires_at is missing from list, fetch GET /reservations/:id
+  if (!holdExpiresAt || !departureTime || !pickupPoint || !dropoffPoint || !fareAmount) {
+    const detailRes = await api("GET", `/reservations/${res.id}`);
+    if (detailRes.ok && detailRes.data) {
+      if (!holdExpiresAt) holdExpiresAt = detailRes.data.hold_expires_at;
+      if (!departureTime) departureTime = detailRes.data.departure?.departure_time;
+      if (!pickupPoint) pickupPoint = detailRes.data.departure?.route?.pickup_point;
+      if (!dropoffPoint) dropoffPoint = detailRes.data.departure?.route?.dropoff_point;
+      if (!fareAmount) fareAmount = detailRes.data.fare_amount;
+    }
+  }
+
+  const isAlreadyExpired = holdExpiresAt ? new Date(holdExpiresAt).getTime() <= Date.now() : false;
+
+  const resCard = el("div", { className: "reservation-pay-card card" });
+
+  // Top header: ID and Status
+  const statusBadge = el("span", {
+    className: `badge ${isAlreadyExpired ? "badge-status-expired" : "badge-status-pending_payment"}`,
+    text: isAlreadyExpired ? "Hold expired" : "PENDING_PAYMENT",
+  });
 
   resCard.appendChild(
     el("div", { className: "res-id-banner" },
-      el("span", { className: "label-caption", text: "Reservation ID" }),
-      el("code", { className: "id-code", text: res.id })
+      el("div", { className: "id-meta-left" },
+        el("span", { className: "label-caption", text: "Reservation ID" }),
+        el("code", { className: "id-code", text: res.id })
+      ),
+      statusBadge
     )
   );
 
-  // Status & Fare
-  resCard.appendChild(
-    el("div", { className: "res-meta-row" },
-      el("div", { className: "meta-item" },
-        el("span", { className: "meta-label", text: "Status" }),
-        el("span", { className: `badge badge-status-${res.status.toLowerCase()}`, text: res.status })
-      ),
-      el("div", { className: "meta-item" },
-        el("span", { className: "meta-label", text: "Fare Amount" }),
-        el("span", { className: "meta-fare", text: formatMoney(res.fareAmount) })
-      )
+  // Departure Time & Fare
+  const metaRow = el("div", { className: "res-meta-row" },
+    el("div", { className: "meta-item" },
+      el("span", { className: "meta-label", text: "Departure Time" }),
+      departureTime
+        ? formatUtcTime(departureTime, { className: "trip-time-val" })
+        : el("span", { text: "Scheduled" })
+    ),
+    el("div", { className: "meta-item" },
+      el("span", { className: "meta-label", text: "Fare Amount" }),
+      el("span", { className: "meta-fare", text: formatMoney(fareAmount) })
     )
   );
+  resCard.appendChild(metaRow);
+
+  // Pickup and drop-off
+  const routeRow = el("div", { className: "trip-route-row" },
+    el("div", { className: "trip-pickup" },
+      el("span", { className: "pickup-dot", text: "●" }),
+      el("strong", { text: pickupPoint || "Pickup point" }),
+      dropoffPoint ? el("span", { className: "trip-dropoff", text: ` → ${dropoffPoint}` }) : false
+    )
+  );
+  resCard.appendChild(routeRow);
+
+  // An already-expired hold must render as "Hold expired. Book again from Search." with no buttons and no timer
+  if (isAlreadyExpired) {
+    const expiredNotice = el("div", {
+      className: "hold-expired-box",
+      text: "Hold expired. Book again from Search.",
+    });
+    resCard.appendChild(expiredNotice);
+    return resCard;
+  }
 
   // Live countdown to hold_expires_at
+  const countdownSpan = el("strong", { id: `countdown-${res.id}`, className: "countdown-value", text: "--:--:--" });
   const countdownBox = el(
     "div",
     { className: "countdown-box" },
     el("span", { className: "countdown-label", text: "Hold expires in: " }),
-    el("strong", { id: "active-res-countdown", className: "countdown-value", text: "--:--:--" })
+    countdownSpan
   );
   resCard.appendChild(countdownBox);
-
-  // Start countdown
-  const timerTarget = res.holdExpiresAt;
-  const countdownSpan = countdownBox.querySelector("#active-res-countdown");
-  if (timerTarget && countdownSpan) {
-    startCountdown(timerTarget, countdownSpan, () => {
-      showToast("Reservation hold expired", "error", 409);
-      activeReservation = null;
-      renderBookAndPayTab(container);
-    });
-  }
-
-  // Result display container
-  const resultDisplay = el("div", { id: "payment-result-box", className: "payment-result-box" });
 
   // Payment simulation action buttons
   const paySuccessBtn = el("button", {
     type: "button",
     className: "btn btn-primary btn-pay",
     text: "Pay (simulate success)",
-    onclick: () => handleExecutePayment(res.id, "SUCCESS", paySuccessBtn, payFailBtn, resultDisplay),
+    onclick: () => handleExecutePayment(res.id, "SUCCESS", paySuccessBtn, payFailBtn, container),
   });
 
   const payFailBtn = el("button", {
     type: "button",
     className: "btn btn-outline btn-pay btn-fail",
     text: "Simulate failed payment",
-    onclick: () => handleExecutePayment(res.id, "FAILURE", paySuccessBtn, payFailBtn, resultDisplay),
+    onclick: () => handleExecutePayment(res.id, "FAILURE", paySuccessBtn, payFailBtn, container),
   });
 
   const btnRow = el("div", { className: "payment-buttons-row" }, paySuccessBtn, payFailBtn);
   resCard.appendChild(btnRow);
-  resCard.appendChild(resultDisplay);
 
-  card.appendChild(resCard);
-  container.appendChild(card);
+  // When hold runs out: changes to "Hold expired. Book again from Search." without reload and loses buttons
+  let stopTimer = null;
+  function onHoldExpired() {
+    if (typeof stopTimer === "function") {
+      stopTimer();
+    }
+    countdownBox.replaceChildren(
+      el("div", { className: "hold-expired-box", text: "Hold expired. Book again from Search." })
+    );
+    statusBadge.className = "badge badge-status-expired";
+    statusBadge.textContent = "Hold expired";
+    if (btnRow && btnRow.parentNode) {
+      btnRow.remove();
+    }
+  }
+
+  if (holdExpiresAt) {
+    stopTimer = startCountdown(holdExpiresAt, countdownSpan, onHoldExpired);
+  }
+
+  return resCard;
 }
 
 /**
  * Handles payment flow: POST /reservations/:id/payments then POST /payments/:id/callback
+ * Reloads the list after every payment action.
  */
-async function handleExecutePayment(reservationId, outcome, btnSuccess, btnFail, resultArea) {
+async function handleExecutePayment(reservationId, outcome, btnSuccess, btnFail, container) {
   btnSuccess.disabled = true;
   btnFail.disabled = true;
-  resultArea.replaceChildren(el("div", { className: "loading-text", text: "Processing payment simulation..." }));
 
   try {
     // Step 1: Initiate payment
@@ -632,9 +764,6 @@ async function handleExecutePayment(reservationId, outcome, btnSuccess, btnFail,
     if (!initRes.ok) {
       const errorMsg = initRes.data?.error || "Payment initiation failed";
       showToast(errorMsg, "error", initRes.status);
-      resultArea.replaceChildren(
-        el("div", { className: "alert alert-danger", text: `[${initRes.status}] ${errorMsg}` })
-      );
       return;
     }
 
@@ -649,9 +778,6 @@ async function handleExecutePayment(reservationId, outcome, btnSuccess, btnFail,
     if (!callbackRes.ok) {
       const errorMsg = callbackRes.data?.error || "Payment callback failed";
       showToast(errorMsg, "error", callbackRes.status);
-      resultArea.replaceChildren(
-        el("div", { className: "alert alert-danger", text: `[${callbackRes.status}] ${errorMsg}` })
-      );
       return;
     }
 
@@ -660,50 +786,22 @@ async function handleExecutePayment(reservationId, outcome, btnSuccess, btnFail,
 
     if (cbStatus === "SUCCEEDED") {
       showToast("Payment confirmed", "success");
-      activeReservation = null;
-
-      resultArea.replaceChildren(
-        el("div", { className: "alert alert-success" },
-          el("strong", { text: "Payment confirmed" }),
-          el("p", { text: "Your seat is confirmed! You can view the departure under 'My trips'." }),
-          el("button", {
-            type: "button",
-            className: "btn btn-primary btn-sm",
-            text: "View My Trips",
-            onclick: () => switchTab("trips"),
-          })
-        )
-      );
     } else if (cbStatus === "FAILED") {
       showToast("Payment failed: the seat was released", "error");
-      activeReservation = null;
-
-      resultArea.replaceChildren(
-        el("div", { className: "alert alert-danger" },
-          el("strong", { text: "Payment failed: the seat was released" }),
-          el("p", { text: "The simulated payment failed. The reservation has been terminated." })
-        )
-      );
     } else if (cbStatus === "IGNORED") {
-      // IGNORED means the hold had expired or was duplicate/closed
       showToast("Too late: the hold had expired", "error");
-      activeReservation = null;
-
-      resultArea.replaceChildren(
-        el("div", { className: "alert alert-warning" },
-          el("strong", { text: "Too late: the hold had expired" }),
-          el("p", { text: callbackRes.data?.message || "The reservation hold expired before payment was settled." })
-        )
-      );
     } else {
       const fallbackMsg = callbackRes.data?.message || `Payment resolved with status: ${cbStatus}`;
       showToast(fallbackMsg, "success");
-      activeReservation = null;
-      resultArea.replaceChildren(el("div", { className: "alert alert-info", text: fallbackMsg }));
     }
+  } catch (err) {
+    console.error("Payment execution error:", err);
+    showToast(err.message || String(err), "error");
   } finally {
     btnSuccess.disabled = false;
     btnFail.disabled = false;
+    // Reload the list after every payment action
+    await renderBookAndPayTab(container);
   }
 }
 
@@ -712,59 +810,87 @@ async function handleExecutePayment(reservationId, outcome, btnSuccess, btnFail,
    ========================================================================== */
 
 async function renderTripsTab(container) {
-  const card = el("div", { className: "card trips-panel" });
+  try {
+    container.replaceChildren();
+    const card = el("div", { className: "card trips-panel" });
 
-  const header = el("div", { className: "panel-header-row" },
-    el("h3", { className: "panel-title", text: "My Trips" }),
-    el("button", {
-      type: "button",
-      className: "btn btn-outline btn-sm",
-      text: "Refresh",
-      onclick: () => loadTripsList(listArea),
-    })
-  );
-  card.appendChild(header);
+    const header = el("div", { className: "panel-header-row" },
+      el("h3", { className: "panel-title", text: "My Trips" }),
+      el("button", {
+        type: "button",
+        className: "btn btn-outline btn-sm",
+        text: "Refresh",
+        onclick: () => loadTripsList(listArea),
+      })
+    );
+    card.appendChild(header);
 
-  const listArea = el("div", { id: "trips-list-area", className: "trips-list-area" });
-  card.appendChild(listArea);
-  container.appendChild(card);
+    const listArea = el("div", { id: "trips-list-area", className: "trips-list-area" });
+    card.appendChild(listArea);
+    container.appendChild(card);
 
-  loadTripsList(listArea);
+    await loadTripsList(listArea);
+  } catch (err) {
+    console.error("Error rendering trips tab:", err);
+    showToast(err.message || String(err), "error");
+    container.replaceChildren(
+      el("div", { className: "alert alert-danger", text: `Error loading trips: ${err.message || String(err)}` })
+    );
+  }
 }
 
 /**
  * Loads passenger reservations from GET /passengers/me/reservations.
  */
 async function loadTripsList(container) {
-  container.replaceChildren(el("div", { className: "loading-text", text: "Loading your reservations..." }));
+  try {
+    container.replaceChildren(el("div", { className: "loading-text", text: "Loading your reservations..." }));
 
-  const { status, ok, data } = await api("GET", "/passengers/me/reservations");
-  if (!ok) {
-    const errorMsg = data?.error || "Failed to load reservations";
-    showToast(errorMsg, "error", status);
+    const { status, ok, data } = await api("GET", "/passengers/me/reservations");
+    if (!ok) {
+      const errorMsg = data?.error || "Failed to load reservations";
+      showToast(errorMsg, "error", status);
+      container.replaceChildren(
+        el("div", { className: "alert alert-danger", text: `[${status}] ${errorMsg}` })
+      );
+      return;
+    }
+
+    const trips = Array.isArray(data) ? data : [];
+    if (trips.length === 0) {
+      container.replaceChildren(
+        el("div", { className: "empty-state-box", text: "No trips found. Book a departure to get started." })
+      );
+      return;
+    }
+
+    container.replaceChildren();
+    const list = el("div", { className: "trips-cards-list" });
+
+    for (const trip of trips) {
+      try {
+        const tripCard = createTripCard(trip);
+        list.appendChild(tripCard);
+      } catch (err) {
+        console.error("Error rendering reservation card:", err);
+        const errorCard = el(
+          "div",
+          { className: "trip-card card card-error-fallback" },
+          el("div", { className: "card-error-title", text: "This reservation could not be displayed" }),
+          el("small", { className: "card-error-details details-line text-muted", text: err?.message || String(err) })
+        );
+        list.appendChild(errorCard);
+      }
+    }
+
+    container.appendChild(list);
+  } catch (err) {
+    console.error("Error loading trips list:", err);
+    showToast(err.message || String(err), "error");
     container.replaceChildren(
-      el("div", { className: "alert alert-danger", text: `[${status}] ${errorMsg}` })
+      el("div", { className: "alert alert-danger", text: `Error loading trips: ${err.message || String(err)}` })
     );
-    return;
   }
-
-  const trips = Array.isArray(data) ? data : [];
-  if (trips.length === 0) {
-    container.replaceChildren(
-      el("div", { className: "empty-state-box", text: "No trips found. Book a departure to get started." })
-    );
-    return;
-  }
-
-  container.replaceChildren();
-  const list = el("div", { className: "trips-cards-list" });
-
-  for (const trip of trips) {
-    const tripCard = createTripCard(trip);
-    list.appendChild(tripCard);
-  }
-
-  container.appendChild(list);
 }
 
 /**
@@ -812,45 +938,71 @@ function createTripCard(trip) {
 
   // Countdown for PENDING_PAYMENT
   if (resStatus === "PENDING_PAYMENT") {
-    const countdownContainer = el("div", { className: "trip-pending-box" },
-      el("span", { className: "label-caption", text: "Payment Hold Active: " }),
-      el("strong", { className: "countdown-timer", text: "--:--:--" }),
-      el("button", {
+    const isAlreadyExpired = trip.hold_expires_at
+      ? new Date(trip.hold_expires_at).getTime() <= Date.now()
+      : false;
+
+    if (isAlreadyExpired) {
+      const statusBadgeEl = card.querySelector(".badge-res-status");
+      if (statusBadgeEl) {
+        statusBadgeEl.className = "badge badge-res-status badge-status-expired";
+        statusBadgeEl.textContent = "Hold expired";
+      }
+      const expiredBox = el("div", {
+        className: "trip-pending-box hold-expired-box",
+        text: "Hold expired. Book again from Search.",
+      });
+      card.appendChild(expiredBox);
+    } else {
+      const countdownSpan = el("strong", { className: "countdown-timer", text: "--:--:--" });
+      const payBtn = el("button", {
         type: "button",
         className: "btn btn-primary btn-xs",
         text: "Pay now",
         onclick: () => {
-          activeReservation = {
-            id: trip.id,
-            status: trip.status,
-            holdExpiresAt: trip.hold_expires_at,
-            fareAmount: trip.fare_amount,
-          };
           switchTab("book-pay");
         },
-      })
-    );
+      });
 
-    const countdownSpan = countdownContainer.querySelector(".countdown-timer");
+      const countdownContainer = el("div", { className: "trip-pending-box" },
+        el("span", { className: "label-caption", text: "Payment Hold Active: " }),
+        countdownSpan,
+        payBtn
+      );
+      card.appendChild(countdownContainer);
 
-    // If hold_expires_at is missing, fetch it with GET /reservations/:id
-    if (!trip.hold_expires_at) {
-      api("GET", `/reservations/${trip.id}`).then(({ ok, data }) => {
-        if (ok && data?.hold_expires_at && countdownSpan) {
-          startCountdown(data.hold_expires_at, countdownSpan, () => {
-            const listArea = document.getElementById("trips-list-area");
-            if (listArea) loadTripsList(listArea);
-          });
+      let stopTripTimer = null;
+      const onTripHoldExpired = () => {
+        if (typeof stopTripTimer === "function") {
+          stopTripTimer();
         }
-      });
-    } else if (countdownSpan) {
-      startCountdown(trip.hold_expires_at, countdownSpan, () => {
-        const listArea = document.getElementById("trips-list-area");
-        if (listArea) loadTripsList(listArea);
-      });
-    }
+        countdownContainer.replaceChildren(
+          el("span", { className: "hold-expired-text text-muted", text: "Hold expired. Book again from Search." })
+        );
+        const statusEl = card.querySelector(".badge-res-status");
+        if (statusEl) {
+          statusEl.className = "badge badge-res-status badge-status-expired";
+          statusEl.textContent = "Hold expired";
+        }
+      };
 
-    card.appendChild(countdownContainer);
+      // If hold_expires_at is missing, fetch it with GET /reservations/:id
+      if (!trip.hold_expires_at) {
+        api("GET", `/reservations/${trip.id}`).then(({ ok, data }) => {
+          if (ok && data?.hold_expires_at && countdownContainer.isConnected) {
+            if (new Date(data.hold_expires_at).getTime() <= Date.now()) {
+              onTripHoldExpired();
+            } else {
+              stopTripTimer = startCountdown(data.hold_expires_at, countdownSpan, onTripHoldExpired);
+            }
+          }
+        }).catch((err) => {
+          console.error("Error fetching reservation hold time:", err);
+        });
+      } else {
+        stopTripTimer = startCountdown(trip.hold_expires_at, countdownSpan, onTripHoldExpired);
+      }
+    }
   }
 
   // Cancel Button: only for CONFIRMED reservations before departure
@@ -1074,52 +1226,62 @@ async function loadTripDetails(reservationId, bodyEl) {
    ========================================================================== */
 
 async function renderNotificationsTab(container) {
-  const card = el("div", { className: "card notifications-panel" });
+  try {
+    container.replaceChildren();
+    const card = el("div", { className: "card notifications-panel" });
 
-  const header = el("div", { className: "panel-header-row" },
-    el("h3", { className: "panel-title", text: "Notifications" }),
-    el("button", {
-      type: "button",
-      className: "btn btn-outline btn-sm",
-      text: "Refresh",
-      onclick: () => loadNotificationsList(listArea),
-    })
-  );
-  card.appendChild(header);
+    const header = el("div", { className: "panel-header-row" },
+      el("h3", { className: "panel-title", text: "Notifications" }),
+      el("button", {
+        type: "button",
+        className: "btn btn-outline btn-sm",
+        text: "Refresh",
+        onclick: () => loadNotificationsList(listArea),
+      })
+    );
+    card.appendChild(header);
 
-  const listArea = el("div", { id: "notifications-list-area", className: "notifications-list-area" });
-  card.appendChild(listArea);
-  container.appendChild(card);
+    const listArea = el("div", { id: "notifications-list-area", className: "notifications-list-area" });
+    card.appendChild(listArea);
+    container.appendChild(card);
 
-  loadNotificationsList(listArea);
+    await loadNotificationsList(listArea);
+  } catch (err) {
+    console.error("Error rendering notifications tab:", err);
+    showToast(err.message || String(err), "error");
+    container.replaceChildren(
+      el("div", { className: "alert alert-danger", text: `Error loading notifications: ${err.message || String(err)}` })
+    );
+  }
 }
 
 /**
  * Loads notifications: GET /passengers/me/notifications, sorted unread first.
  */
 async function loadNotificationsList(container) {
-  container.replaceChildren(el("div", { className: "loading-text", text: "Loading notifications..." }));
+  try {
+    container.replaceChildren(el("div", { className: "loading-text", text: "Loading notifications..." }));
 
-  const { status, ok, data } = await api("GET", "/passengers/me/notifications");
-  if (!ok) {
-    const errorMsg = data?.error || "Failed to load notifications";
-    showToast(errorMsg, "error", status);
-    container.replaceChildren(el("div", { className: "alert alert-danger", text: `[${status}] ${errorMsg}` }));
-    return;
-  }
+    const { status, ok, data } = await api("GET", "/passengers/me/notifications");
+    if (!ok) {
+      const errorMsg = data?.error || "Failed to load notifications";
+      showToast(errorMsg, "error", status);
+      container.replaceChildren(el("div", { className: "alert alert-danger", text: `[${status}] ${errorMsg}` }));
+      return;
+    }
 
-  const items = Array.isArray(data) ? data : [];
+    const items = Array.isArray(data) ? data : [];
 
-  // Update badge count
-  unreadCount = items.filter((n) => !n.read_at).length;
-  updateNotificationBadge();
+    // Update badge count
+    unreadCount = items.filter((n) => !n.read_at).length;
+    updateNotificationBadge();
 
-  if (items.length === 0) {
-    container.replaceChildren(
-      el("div", { className: "empty-state-box", text: "No notifications yet." })
-    );
-    return;
-  }
+    if (items.length === 0) {
+      container.replaceChildren(
+        el("div", { className: "empty-state-box", text: "No notifications yet." })
+      );
+      return;
+    }
 
   // Sort unread first, then newest first
   const sorted = [...items].sort((a, b) => {
@@ -1207,6 +1369,13 @@ async function loadNotificationsList(container) {
   }
 
   container.appendChild(list);
+  } catch (err) {
+    console.error("Error loading notifications list:", err);
+    showToast(err.message || String(err), "error");
+    container.replaceChildren(
+      el("div", { className: "alert alert-danger", text: `Error loading notifications: ${err.message || String(err)}` })
+    );
+  }
 }
 
 /**

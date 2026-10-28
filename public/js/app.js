@@ -119,6 +119,8 @@ function renderMain() {
   if (!main) return;
   main.replaceChildren();
 
+  try {
+
   if (currentUser) {
     if (currentUser.role === "PASSENGER") {
       renderPassengerScreen(main, currentUser);
@@ -503,6 +505,13 @@ function renderMain() {
     authCard.appendChild(tabContent);
     main.appendChild(authCard);
   }
+  } catch (err) {
+    console.error("Error rendering main view:", err);
+    showToast(err.message || String(err), "error");
+    main.replaceChildren(
+      el("div", { className: "alert alert-danger", text: `Error: ${err.message || String(err)}` })
+    );
+  }
 }
 
 /**
@@ -621,9 +630,14 @@ function setupApiLogDrawer() {
  * Full page re-render.
  */
 export function render() {
-  renderHeader();
-  renderMain();
-  renderApiLog();
+  try {
+    renderHeader();
+    renderMain();
+    renderApiLog();
+  } catch (err) {
+    console.error("Error during application render:", err);
+    showToast(err.message || String(err), "error");
+  }
 }
 
 /**

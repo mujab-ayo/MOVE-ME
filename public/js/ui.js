@@ -196,20 +196,38 @@ export function startCountdown(targetDate, element, onComplete) {
   if (!element) return () => {};
 
   const targetTime = (targetDate instanceof Date ? targetDate : new Date(targetDate)).getTime();
+  let timerId = null;
+  let isStopped = false;
+
+  function stop() {
+    if (timerId !== null) {
+      clearInterval(timerId);
+      timerId = null;
+    }
+    isStopped = true;
+  }
 
   function update() {
+    if (isStopped) return;
+
     // Automatically stop when element is removed from DOM
     if (!element.isConnected) {
-      clearInterval(timerId);
+      stop();
       return;
     }
 
     const remainingMs = targetTime - Date.now();
     if (remainingMs <= 0) {
       element.textContent = "00:00:00";
-      clearInterval(timerId);
+      stop();
       if (typeof onComplete === "function") {
-        onComplete();
+        queueMicrotask(() => {
+          try {
+            onComplete();
+          } catch (err) {
+            console.error("Error in countdown onComplete callback:", err);
+          }
+        });
       }
       return;
     }
@@ -228,8 +246,9 @@ export function startCountdown(targetDate, element, onComplete) {
     element.textContent = formatted;
   }
 
+  // Assign interval before initial update so stop() is always safe to call
+  timerId = setInterval(update, 1000);
   update();
-  const timerId = setInterval(update, 1000);
 
-  return () => clearInterval(timerId);
+  return stop;
 }

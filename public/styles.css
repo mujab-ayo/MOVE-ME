@@ -1938,5 +1938,34 @@ summary:focus-visible,
   margin-right: 0.35rem;
 }
 
+/* Fallback Card for Render Errors */
+.card-error-fallback {
+  border-left: 4px solid var(--color-danger);
+  background-color: var(--color-danger-bg);
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
 
+.card-error-title {
+  font-weight: 600;
+  color: var(--color-danger);
+}
 
+.card-error-details.details-line {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+.hold-expired-box {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  background-color: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  font-weight: 500;
+  font-size: 0.95rem;
+}
