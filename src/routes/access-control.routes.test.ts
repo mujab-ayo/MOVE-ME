@@ -136,4 +136,12 @@ describe("Access Control & Role-Based Middleware Integration", () => {
       });
     }
   });
+
+  describe("Public endpoints (no authentication required)", () => {
+    it("POST /webhooks/paystack does not require Authorization header", async () => {
+      const res = await request(app).post("/webhooks/paystack").send({});
+      // Rejects on signature with 401 { error: 'Invalid signature' }, never 'Authentication token missing or invalid'
+      expect(res.body.error).toBe("Invalid signature");
+    });
+  });
 });

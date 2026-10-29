@@ -11,6 +11,7 @@ import paymentRouter from "./routes/payment.routes";
 import passengerRouter from "./routes/passenger.routes";
 import routeRouter from "./routes/route.routes";
 import notificationRouter from "./routes/notification.routes";
+import webhookRouter from "./routes/webhook.routes";
 import { swaggerSpec } from "./swagger";
 
 const app = express();
@@ -26,7 +27,16 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req: any, _res, buf) => {
+      const p = req.originalUrl?.split("?")[0] || req.path || req.url;
+      if (p === "/webhooks/paystack" || p === "/webhooks/paystack/") {
+        req.rawBody = buf;
+      }
+    },
+  })
+);
 
 // Redirect root to Swagger UI documentation
 app.get("/", (_req: Request, res: Response) => {
@@ -43,6 +53,7 @@ app.use("/payments", paymentRouter);
 app.use("/passengers", passengerRouter);
 app.use("/routes", routeRouter);
 app.use("/notifications", notificationRouter);
+app.use("/webhooks", webhookRouter);
 
 // Swagger UI documentation
 const swaggerUiOptions = {

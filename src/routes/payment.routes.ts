@@ -3,6 +3,8 @@ import { z } from "zod";
 import { AppDataSource } from "../data-source";
 import { Payment } from "../entities/payment.entity";
 import { requireAuth } from "../middleware/auth.middleware";
+import { applyPaymentOutcome } from "../services/payment-outcome.service";
+import { simulatedAllowed } from "../services/payment-mode";
 
 const router = Router();
 
@@ -103,6 +105,11 @@ const callbackSchema = z.object({
 router.post(
   "/:id/callback",
   async (req: Request, res: Response): Promise<void> => {
+    if (!simulatedAllowed()) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
     if (!z.string().uuid().safeParse(id).success) {
@@ -120,227 +127,74 @@ router.post(
 
     const { outcome } = parseResult.data;
 
-    const queryRunner = AppDataSource.createQueryRunner();
-    await queryRunner.connect();
-
-    try {
-      // 1. Read the payment (no lock) to get reservation_id, then the reservation's departure_id
-      const paymentsPrelim = await queryRunner.query(
-        `SELECT id, reservation_id, status
-         FROM payments
-         WHERE id = $1;`,
-        [id]
-      );
-
-      if (paymentsPrelim.length === 0) {
-        res.status(404).json({ error: "Payment not found" });
-        return;
-      }
-
-      const paymentPrelim = paymentsPrelim[0];
-
-      // If payment is already resolved (no longer PENDING), treat as no-op
-      if (paymentPrelim.status !== "PENDING") {
-        res.status(200).json({
-          status: "IGNORED",
-          message: `Payment already resolved with status ${paymentPrelim.status}`,
-          paymentStatus: paymentPrelim.status,
-        });
-        return;
-      }
-
-      const reservationsPrelim = await queryRunner.query(
-        `SELECT id, departure_id
-         FROM reservations
-         WHERE id = $1;`,
-        [paymentPrelim.reservation_id]
-      );
-
-      if (reservationsPrelim.length === 0) {
-        res.status(404).json({ error: "Associated reservation not found" });
-        return;
-      }
-
-      const departureId = reservationsPrelim[0].departure_id;
-
-      // 2. BEGIN, then SELECT the departure FOR UPDATE first (same lock, same order as the booking endpoint: departure before reservation)
-      await queryRunner.startTransaction();
-
-      const departures = await queryRunner.query(
-        `SELECT id, status
-         FROM departures
-         WHERE id = $1
-         FOR UPDATE;`,
-        [departureId]
-      );
-
-      if (departures.length === 0) {
-        await queryRunner.rollbackTransaction();
-        res.status(404).json({ error: "Associated departure not found" });
-        return;
-      }
-
-      const departure = departures[0];
-
-      // 3. Lock payment FOR UPDATE, then reservation FOR UPDATE, and re-verify their statuses under the locks
-      const payments = await queryRunner.query(
-        `SELECT id, reservation_id, amount, status, idempotency_key
-         FROM payments
-         WHERE id = $1
-         FOR UPDATE;`,
-        [id]
-      );
-
-      if (payments.length === 0) {
-        await queryRunner.rollbackTransaction();
-        res.status(404).json({ error: "Payment not found" });
-        return;
-      }
-
-      const payment = payments[0];
-
-      // Re-verify payment status under the lock
-      if (payment.status !== "PENDING") {
-        await queryRunner.commitTransaction();
-        res.status(200).json({
-          status: "IGNORED",
-          message: `Payment already resolved with status ${payment.status}`,
-          paymentStatus: payment.status,
-        });
-        return;
-      }
-
-      // 4. Lock reservation FOR UPDATE and compute hold validity with clock_timestamp() instead of now()
-      const reservations = await queryRunner.query(
-        `SELECT id, departure_id, passenger_id, status, fare_amount, hold_expires_at,
-                (hold_expires_at > clock_timestamp()) AS is_hold_valid
-         FROM reservations
-         WHERE id = $1
-         FOR UPDATE;`,
-        [payment.reservation_id]
-      );
-
-      if (reservations.length === 0) {
-        await queryRunner.rollbackTransaction();
-        res.status(404).json({ error: "Associated reservation not found" });
-        return;
-      }
-
-      const reservation = reservations[0];
-
-      // Re-verify reservation status, hold validity, and departure status under the locks
-      const isStillPending = reservation.status === "PENDING_PAYMENT";
-      const isHoldValid = reservation.is_hold_valid === true;
-      const isDepartureValid =
-        departure.status === "SCHEDULED" || departure.status === "ARRIVED";
-      const isReservationStillValid =
-        isStillPending && isHoldValid && isDepartureValid;
-
-      if (!isReservationStillValid) {
-        // Late callback on an expired or invalid reservation — treat it as a no-op (don't confirm, don't error loudly)
-        // Update payment to EXPIRED if it's still PENDING
-        await queryRunner.query(
-          `UPDATE payments
-           SET status = 'EXPIRED', completed_at = now()
-           WHERE id = $1 AND status = 'PENDING';`,
-          [id]
-        );
-
-        // Lazily materialize reservation status to EXPIRED if it was pending
-        if (isStillPending) {
-          await queryRunner.query(
-            `UPDATE reservations
-             SET status = 'EXPIRED'
-             WHERE id = $1 AND status = 'PENDING_PAYMENT';`,
-            [reservation.id]
-          );
-        }
-
-        await queryRunner.commitTransaction();
-
-        res.status(200).json({
-          status: "IGNORED",
-          message: "Late callback on expired reservation - payment marked EXPIRED",
-          paymentStatus: "EXPIRED",
-        });
-        return;
-      }
-
-      // 4. Reservation is valid and unexpired:
-      if (outcome === "SUCCESS") {
-        try {
-          // Update payment to SUCCEEDED
-          await queryRunner.query(
-            `UPDATE payments
-             SET status = 'SUCCEEDED', completed_at = now()
-             WHERE id = $1;`,
-            [id]
-          );
-
-          // Update reservation to CONFIRMED
-          await queryRunner.query(
-            `UPDATE reservations
-             SET status = 'CONFIRMED'
-             WHERE id = $1;`,
-            [reservation.id]
-          );
-
-          await queryRunner.commitTransaction();
-
-          res.status(200).json({
-            status: "SUCCEEDED",
-            reservationStatus: "CONFIRMED",
-          });
-          return;
-        } catch (innerErr: any) {
-          // Rely on the one_successful_payment_per_reservation unique index as the backstop
-          // against a duplicate success — catch that specific constraint violation and treat it as a no-op too
-          if (
-            innerErr.code === "23505" &&
-            (innerErr.constraint?.includes("one_successful_payment") ||
-              innerErr.detail?.includes("Key (reservation_id)"))
-          ) {
-            await queryRunner.rollbackTransaction();
-            res.status(200).json({
-              status: "IGNORED",
-              message: "Duplicate successful payment for reservation - ignored",
-            });
-            return;
-          }
-          throw innerErr;
-        }
-      } else {
-        // outcome === 'FAILURE': update payment to FAILED, reservation to FAILED
-        await queryRunner.query(
-          `UPDATE payments
-           SET status = 'FAILED', completed_at = now()
-           WHERE id = $1;`,
-          [id]
-        );
-
-        await queryRunner.query(
-          `UPDATE reservations
-           SET status = 'FAILED'
-           WHERE id = $1;`,
-          [reservation.id]
-        );
-
-        await queryRunner.commitTransaction();
-
-        res.status(200).json({
-          status: "FAILED",
-          reservationStatus: "FAILED",
-        });
-        return;
-      }
-    } catch (err: any) {
-      if (queryRunner.isTransactionActive) {
-        await queryRunner.rollbackTransaction();
-      }
-      throw err;
-    } finally {
-      await queryRunner.release();
+    const paymentRepo = AppDataSource.getRepository(Payment);
+    const existingPayment = await paymentRepo.findOne({ where: { id } });
+    if (!existingPayment) {
+      res.status(404).json({ error: "Payment not found" });
+      return;
     }
+
+    if (existingPayment.provider === "PAYSTACK") {
+      res.status(403).json({
+        error: "This payment is confirmed by the payment provider only",
+      });
+      return;
+    }
+
+    const result = await applyPaymentOutcome(id, outcome);
+
+    if ("error" in result) {
+      res.status(404).json(result);
+      return;
+    }
+
+    res.status(200).json(result);
+  }
+);
+
+/**
+ * @openapi
+ * /payments/return:
+ *   get:
+ *     summary: Public payment provider return landing page.
+ *     description: Public HTML landing page displayed to the user after returning from payment provider checkout.
+ *     tags:
+ *       - Payments
+ *     responses:
+ *       200:
+ *         description: HTML return page
+ *         content:
+ *           text/html:
+ *             schema:
+ *               type: string
+ */
+router.get(
+  "/return",
+  (_req: Request, res: Response): void => {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.status(200).send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Submitted - MoveMe</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #0f172a; color: #f8fafc; }
+    .card { background: #1e293b; padding: 2rem; border-radius: 0.75rem; max-width: 480px; text-align: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+    h1 { margin-top: 0; color: #38bdf8; font-size: 1.5rem; }
+    p { color: #cbd5e1; line-height: 1.5; margin: 1rem 0 1.5rem; }
+    a { display: inline-block; background: #2563eb; color: #fff; padding: 0.75rem 1.5rem; border-radius: 0.5rem; text-decoration: none; font-weight: 500; }
+    a:hover { background: #1d4ed8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Payment Submitted</h1>
+    <p>Your payment was submitted and the booking is confirmed when the payment provider notifies the server.</p>
+    <a href="/app/">Back to /app/</a>
+  </div>
+</body>
+</html>`);
   }
 );
 

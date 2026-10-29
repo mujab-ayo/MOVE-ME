@@ -130,6 +130,17 @@ describe("Exception Handling & Data Exposure Integration", () => {
       expect(res.headers["content-type"]).toMatch(/json/);
       expect(res.body).toEqual({ error: "Malformed JSON body" });
     });
+
+    it("returns 400 { error: 'Malformed JSON body' } when malformed JSON is sent to webhook endpoint", async () => {
+      const res = await request(app)
+        .post("/webhooks/paystack")
+        .set("Content-Type", "application/json")
+        .send("{ broken json body, not valid");
+
+      expect(res.status).toBe(400);
+      expect(res.headers["content-type"]).toMatch(/json/);
+      expect(res.body).toEqual({ error: "Malformed JSON body" });
+    });
   });
 
   describe("3. Final Error-Handling Middleware (JSON 500 without stack or SQL text)", () => {

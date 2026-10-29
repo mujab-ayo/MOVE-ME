@@ -22,7 +22,8 @@
     "check:docs": "node scripts/check-exception-doc.js",
     "check:openapi": "node scripts/check-openapi.js",
     "export:openapi": "node scripts/export-openapi.js",
-    "report:regression": "node scripts/report-regression.js"
+    "report:regression": "node scripts/report-regression.js",
+    "refunds:retry": "node scripts/retry-refunds.js"
   },
   "keywords": [],
   "author": "",

@@ -14,12 +14,20 @@ export type PaymentStatus =
   | "SUCCEEDED"
   | "FAILED"
   | "EXPIRED"
-  | "REFUNDED";
+  | "REFUNDED"
+  | "REFUND_PENDING"
+  | "REFUND_FAILED";
+
+export type PaymentProvider = "SIMULATED" | "PAYSTACK";
 
 @Entity("payments")
 @Index("one_successful_payment_per_reservation", ["reservation_id"], {
   unique: true,
   where: "status = 'SUCCEEDED'",
+})
+@Index("idx_payments_provider_reference", ["provider_reference"], {
+  unique: true,
+  where: "provider_reference IS NOT NULL",
 })
 export class Payment {
   @PrimaryGeneratedColumn("uuid")
@@ -40,6 +48,30 @@ export class Payment {
     default: "PENDING",
   })
   status!: PaymentStatus;
+
+  @Column({
+    type: "text",
+    default: "SIMULATED",
+  })
+  provider!: PaymentProvider;
+
+  @Column({ name: "provider_reference", type: "text", nullable: true })
+  provider_reference!: string | null;
+
+  @Column({ name: "provider_refund_id", type: "text", nullable: true })
+  provider_refund_id!: string | null;
+
+  @Column({ name: "refund_requested_at", type: "timestamptz", nullable: true })
+  refund_requested_at!: Date | null;
+
+  @Column({ name: "refund_claimed_at", type: "timestamptz", nullable: true })
+  refund_claimed_at!: Date | null;
+
+  @Column({ name: "refund_attempts", type: "int", default: 0 })
+  refund_attempts!: number;
+
+  @Column({ name: "refund_error", type: "text", nullable: true })
+  refund_error!: string | null;
 
   @Column({ name: "idempotency_key", type: "text", unique: true })
   idempotency_key!: string;

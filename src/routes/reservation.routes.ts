@@ -4,7 +4,10 @@ import { z } from "zod";
 import { AppDataSource } from "../data-source";
 import { Reservation } from "../entities/reservation.entity";
 import { Payment } from "../entities/payment.entity";
+import { User } from "../entities/user.entity";
 import { requireAuth, requireRole } from "../middleware/auth.middleware";
+import { defaultProvider, simulatedAllowed } from "../services/payment-mode";
+import { getSecretKey, toKobo, initializeTransaction } from "../services/paystack.client";
 
 const router = Router();
 
@@ -114,6 +117,31 @@ router.post(
       return;
     }
 
+    let provider: "SIMULATED" | "PAYSTACK";
+    if (req.body && req.body.provider !== undefined) {
+      if (req.body.provider !== "SIMULATED" && req.body.provider !== "PAYSTACK") {
+        res.status(400).json({ error: "Invalid payment provider" });
+        return;
+      }
+      provider = req.body.provider;
+    } else {
+      provider = defaultProvider();
+    }
+
+    if (provider === "SIMULATED" && !simulatedAllowed()) {
+      res.status(400).json({ error: "Simulated payments are disabled" });
+      return;
+    }
+
+    if (provider === "PAYSTACK") {
+      try {
+        getSecretKey();
+      } catch {
+        res.status(503).json({ error: "Paystack is not configured" });
+        return;
+      }
+    }
+
     const passengerId = req.user!.id;
     const reservationRepo = AppDataSource.getRepository(Reservation);
     const paymentRepo = AppDataSource.getRepository(Payment);
@@ -164,20 +192,68 @@ router.post(
           ? req.body.idempotencyKey.trim()
           : crypto.randomUUID();
 
+      if (provider === "SIMULATED") {
+        const payment = paymentRepo.create({
+          reservation_id: reservation.id,
+          amount: reservation.fare_amount,
+          status: "PENDING",
+          idempotency_key: idempotencyKey,
+          provider: "SIMULATED",
+        });
+
+        await paymentRepo.save(payment);
+
+        // 5. Return 201 {paymentId, status: 'PENDING'}
+        res.status(201).json({
+          paymentId: payment.id,
+          status: payment.status,
+        });
+        return;
+      }
+
+      // provider === "PAYSTACK"
+      const reference = `mm_${crypto.randomUUID()}`;
+
       const payment = paymentRepo.create({
         reservation_id: reservation.id,
         amount: reservation.fare_amount,
         status: "PENDING",
         idempotency_key: idempotencyKey,
+        provider: "PAYSTACK",
+        provider_reference: reference,
       });
 
       await paymentRepo.save(payment);
 
-      // 5. Return 201 {paymentId, status: 'PENDING'}
-      res.status(201).json({
-        paymentId: payment.id,
-        status: payment.status,
-      });
+      const userRepo = AppDataSource.getRepository(User);
+      const passenger = await userRepo.findOne({ where: { id: passengerId } });
+      const email = passenger?.email || "";
+
+      const publicBaseUrl = process.env.PUBLIC_BASE_URL || "http://localhost:3000";
+      const callbackUrl = `${publicBaseUrl.replace(/\/$/, "")}/payments/return`;
+
+      try {
+        const initResult = await initializeTransaction({
+          email,
+          amountKobo: toKobo(reservation.fare_amount),
+          reference,
+          callbackUrl,
+        });
+
+        res.status(201).json({
+          paymentId: payment.id,
+          status: "PENDING",
+          provider: "PAYSTACK",
+          reference,
+          checkoutUrl: initResult.authorizationUrl,
+        });
+        return;
+      } catch (providerErr) {
+        payment.status = "FAILED";
+        await paymentRepo.save(payment);
+        res.status(502).json({ error: "Payment provider unavailable" });
+        return;
+      }
     } catch (err: any) {
       if (err.code === "23505" && err.constraint?.includes("idempotency")) {
         res.status(409).json({ error: "Payment with this idempotency key already exists" });

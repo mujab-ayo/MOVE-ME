@@ -105,6 +105,12 @@ describe("GET /docs", () => {
 
     expect(paths["/payments/{id}/callback"]).toBeDefined();
     expect(paths["/payments/{id}/callback"].post.tags).toContain("Payments");
+
+    expect(paths["/payments/return"]).toBeDefined();
+    expect(paths["/payments/return"].get.tags).toContain("Payments");
+
+    expect(paths["/webhooks/paystack"]).toBeDefined();
+    expect(paths["/webhooks/paystack"].post.tags).toContain("Payments");
   });
 });
 
