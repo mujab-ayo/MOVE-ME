@@ -193,11 +193,14 @@ export function formatUtcTimeString(utcString) {
  * @returns {Function} Stop function to cancel the countdown manually
  */
 export function startCountdown(targetDate, element, onComplete) {
-  if (!element) return () => {};
+  if (!element || !targetDate) return () => {};
 
   const targetTime = (targetDate instanceof Date ? targetDate : new Date(targetDate)).getTime();
+  if (isNaN(targetTime)) return () => {};
+
   let timerId = null;
   let isStopped = false;
+  let hasBeenConnected = false;
 
   function stop() {
     if (timerId !== null) {
@@ -210,15 +213,17 @@ export function startCountdown(targetDate, element, onComplete) {
   function update() {
     if (isStopped) return;
 
-    // Automatically stop when element is removed from DOM
-    if (!element.isConnected) {
+    // Automatically stop when element is removed from DOM after being attached
+    if (element.isConnected) {
+      hasBeenConnected = true;
+    } else if (hasBeenConnected) {
       stop();
       return;
     }
 
     const remainingMs = targetTime - Date.now();
     if (remainingMs <= 0) {
-      element.textContent = "00:00:00";
+      element.textContent = "00:00";
       stop();
       if (typeof onComplete === "function") {
         queueMicrotask(() => {
@@ -232,17 +237,11 @@ export function startCountdown(targetDate, element, onComplete) {
       return;
     }
 
-    const totalSeconds = Math.floor(remainingMs / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const totalSeconds = Math.max(0, Math.floor(remainingMs / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
 
-    const formatted = [
-      String(hours).padStart(2, "0"),
-      String(minutes).padStart(2, "0"),
-      String(seconds).padStart(2, "0"),
-    ].join(":");
-
+    const formatted = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
     element.textContent = formatted;
   }
 

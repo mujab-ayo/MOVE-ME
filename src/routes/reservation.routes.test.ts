@@ -263,6 +263,7 @@ describe("Reservation & Passenger Routes Integration (Section 4 & Ownership)", (
       expect(responseA.body).toHaveLength(1);
       expect(responseA.body[0].id).toBe(resA.id);
       expect(responseA.body[0].passenger_id).toBe(passengerA.id);
+      expect(responseA.body[0].hold_expires_at).toBeDefined();
 
       // Fetch as passenger B
       const responseB = await request(app)

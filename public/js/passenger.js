@@ -626,7 +626,7 @@ async function loadBookAndPayList(listArea, container) {
  * Builds a card for a pending reservation awaiting payment.
  */
 async function createBookAndPayCard(res, container) {
-  let holdExpiresAt = res.hold_expires_at;
+  let holdExpiresAt = res.hold_expires_at || res.holdExpiresAt;
   let departureTime = res.departure_time || res.departure?.departure_time;
   let pickupPoint = res.pickup_point || res.departure?.route?.pickup_point;
   let dropoffPoint = res.dropoff_point || res.departure?.route?.dropoff_point;
@@ -636,7 +636,7 @@ async function createBookAndPayCard(res, container) {
   if (!holdExpiresAt || !departureTime || !pickupPoint || !dropoffPoint || !fareAmount) {
     const detailRes = await api("GET", `/reservations/${res.id}`);
     if (detailRes.ok && detailRes.data) {
-      if (!holdExpiresAt) holdExpiresAt = detailRes.data.hold_expires_at;
+      if (!holdExpiresAt) holdExpiresAt = detailRes.data.hold_expires_at || detailRes.data.holdExpiresAt;
       if (!departureTime) departureTime = detailRes.data.departure?.departure_time;
       if (!pickupPoint) pickupPoint = detailRes.data.departure?.route?.pickup_point;
       if (!dropoffPoint) dropoffPoint = detailRes.data.departure?.route?.dropoff_point;
@@ -689,18 +689,18 @@ async function createBookAndPayCard(res, container) {
   );
   resCard.appendChild(routeRow);
 
-  // An already-expired hold must render as "The hold expired; no seat was reserved" with no buttons and no timer
+  // An already-expired hold must render as "Hold expired. Book again from Search." with no buttons and no timer
   if (isAlreadyExpired) {
     const expiredNotice = el("div", {
       className: "hold-expired-box",
-      text: "The hold expired; no seat was reserved",
+      text: "Hold expired. Book again from Search.",
     });
     resCard.appendChild(expiredNotice);
     return resCard;
   }
 
-  // Live countdown to hold_expires_at
-  const countdownSpan = el("strong", { id: `countdown-${res.id}`, className: "countdown-value", text: "--:--:--" });
+  // Live countdown to hold_expires_at (mm:ss)
+  const countdownSpan = el("strong", { id: `countdown-${res.id}`, className: "countdown-value", text: "--:--" });
   const countdownBox = el(
     "div",
     { className: "countdown-box" },
@@ -727,7 +727,7 @@ async function createBookAndPayCard(res, container) {
     }
   }
 
-  // When hold runs out: changes to "The hold expired; no seat was reserved"
+  // When hold runs out: changes to "Hold expired. Book again from Search."
   let stopTimer = null;
   function onHoldExpired() {
     stopPolling();
@@ -735,18 +735,31 @@ async function createBookAndPayCard(res, container) {
       stopTimer();
     }
     countdownBox.replaceChildren(
-      el("div", { className: "hold-expired-box", text: "The hold expired; no seat was reserved" })
+      el("div", { className: "hold-expired-box", text: "Hold expired. Book again from Search." })
     );
     statusBadge.className = "badge badge-status-expired";
     statusBadge.textContent = "Hold expired";
     if (actionArea && actionArea.parentNode) {
       actionArea.remove();
     }
-    showToast("The hold expired; no seat was reserved", "error");
   }
 
   if (holdExpiresAt) {
     stopTimer = startCountdown(holdExpiresAt, countdownSpan, onHoldExpired);
+  } else {
+    // If still missing for any reason, fetch GET /reservations/:id for that reservation and use its hold_expires_at
+    api("GET", `/reservations/${res.id}`).then(({ ok, data }) => {
+      if (ok && data) {
+        const fetchedHold = data.hold_expires_at || data.holdExpiresAt;
+        if (fetchedHold) {
+          if (new Date(fetchedHold).getTime() <= Date.now()) {
+            onHoldExpired();
+          } else {
+            stopTimer = startCountdown(fetchedHold, countdownSpan, onHoldExpired);
+          }
+        }
+      }
+    });
   }
 
   // Initial payment action: "Pay with Paystack"
@@ -1124,7 +1137,7 @@ function createTripCard(trip) {
       });
       card.appendChild(expiredBox);
     } else {
-      const countdownSpan = el("strong", { className: "countdown-timer", text: "--:--:--" });
+      const countdownSpan = el("strong", { className: "countdown-timer", text: "--:--" });
       const payBtn = el("button", {
         type: "button",
         className: "btn btn-primary btn-xs",
@@ -1156,21 +1169,23 @@ function createTripCard(trip) {
         }
       };
 
+      const tripHold = trip.hold_expires_at || trip.holdExpiresAt;
       // If hold_expires_at is missing, fetch it with GET /reservations/:id
-      if (!trip.hold_expires_at) {
+      if (!tripHold) {
         api("GET", `/reservations/${trip.id}`).then(({ ok, data }) => {
-          if (ok && data?.hold_expires_at && countdownContainer.isConnected) {
-            if (new Date(data.hold_expires_at).getTime() <= Date.now()) {
+          const fetchedHold = data?.hold_expires_at || data?.holdExpiresAt;
+          if (ok && fetchedHold && countdownContainer.isConnected) {
+            if (new Date(fetchedHold).getTime() <= Date.now()) {
               onTripHoldExpired();
             } else {
-              stopTripTimer = startCountdown(data.hold_expires_at, countdownSpan, onTripHoldExpired);
+              stopTripTimer = startCountdown(fetchedHold, countdownSpan, onTripHoldExpired);
             }
           }
         }).catch((err) => {
           console.error("Error fetching reservation hold time:", err);
         });
       } else {
-        stopTripTimer = startCountdown(trip.hold_expires_at, countdownSpan, onTripHoldExpired);
+        stopTripTimer = startCountdown(tripHold, countdownSpan, onTripHoldExpired);
       }
     }
   }
