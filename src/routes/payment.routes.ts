@@ -17,8 +17,8 @@ const callbackSchema = z.object({
  * @openapi
  * /payments/{id}/callback:
  *   post:
- *     summary: Process payment provider outcome webhook (Simulated payment gateway / Public).
- *     description: Internal simulated PSP webhook callback to settle payments. Performs critical MM-06 validity checks.
+ *     summary: Process payment provider outcome callback (simulated payments only; not available in production).
+ *     description: Internal simulated PSP webhook callback to settle payments. Simulated payments only; not available in production (disabled unless ALLOW_SIMULATED_PAYMENTS is true outside production). Performs critical MM-06 validity checks.
  *     tags:
  *       - Payments
  *     parameters:
@@ -85,14 +85,27 @@ const callbackSchema = z.object({
  *               $ref: '#/components/schemas/Error'
  *             example:
  *               error: "Invalid callback payload: outcome must be 'SUCCESS' or 'FAILURE'"
- *       404:
- *         description: Payment or associated reservation not found
+ *       403:
+ *         description: Forbidden - simulated callback on a Paystack payment
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
  *             example:
- *               error: "Payment not found"
+ *               error: "This payment is confirmed by the payment provider only"
+ *       404:
+ *         description: Payment not found, or simulated payments disabled
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             examples:
+ *               notFound:
+ *                 value:
+ *                   error: "Payment not found"
+ *               disabled:
+ *                 value:
+ *                   error: "Not found"
  *       500:
  *         description: Internal server error
  *         content:
@@ -157,7 +170,7 @@ router.post(
  * /payments/return:
  *   get:
  *     summary: Public payment provider return landing page.
- *     description: Public HTML landing page displayed to the user after returning from payment provider checkout.
+ *     description: Public HTML landing page displayed to the user after returning from payment provider checkout. Informs the user that payment was submitted and the booking is confirmed when the payment provider notifies the server.
  *     tags:
  *       - Payments
  *     responses:
@@ -167,6 +180,7 @@ router.post(
  *           text/html:
  *             schema:
  *               type: string
+ *             example: "<!DOCTYPE html><html lang=\"en\"><head><title>Payment Submitted - MoveMe</title></head><body>...</body></html>"
  */
 router.get(
   "/return",
@@ -234,6 +248,15 @@ router.get(
  *                   type: string
  *                 status:
  *                   type: string
+ *                   enum:
+ *                     - PENDING
+ *                     - SUCCEEDED
+ *                     - FAILED
+ *                     - EXPIRED
+ *                     - REFUND_PENDING
+ *                     - REFUNDED
+ *                     - REFUND_FAILED
+ *                   description: "Payment status (including refund lifecycle statuses: REFUND_PENDING, REFUNDED, REFUND_FAILED)"
  *                 completed_at:
  *                   type: string
  *                   format: date-time

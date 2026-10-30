@@ -1073,6 +1073,42 @@ html, body {
   flex-wrap: wrap;
 }
 
+.payment-action-area {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.payment-waiting-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  background-color: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+}
+
+.payment-waiting-box .waiting-header {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.payment-waiting-box .waiting-desc {
+  font-size: 0.85rem;
+  color: #1e3a8a;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.check-now-btn {
+  align-self: flex-start;
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  padding: 0.35rem 0.75rem;
+}
+
 .btn-pay {
   flex: 1;
   padding: 0.7rem 1rem;
@@ -1192,6 +1228,26 @@ html, body {
 
 .badge-res-failed,
 .badge-status-failed {
+  background-color: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.badge-status-refund-pending,
+.badge-status-refund_pending {
+  background-color: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+}
+
+.badge-status-refunded {
+  background-color: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.badge-status-refund-failed,
+.badge-status-refund_failed {
   background-color: #fee2e2;
   color: #b91c1c;
   border: 1px solid #fecaca;

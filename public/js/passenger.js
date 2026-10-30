@@ -2,7 +2,7 @@
  * MoveMe Passenger Screen
  * Handles:
  * 1. Search departures
- * 2. Book and pay (with simulated payment callback)
+ * 2. Book and pay (with Paystack checkout flow or simulated fallback)
  * 3. My trips (reservations list, live countdowns, cancel with refund, details expander)
  * 4. Notifications (read/unread, polling, mark as read)
  */
@@ -108,7 +108,7 @@ export async function renderPassengerScreen(container, user) {
         "div",
         { className: "what-can-i-do-body" },
         el("p", {
-          text: "Search and book scheduled or immediate departures across active commuter routes. Secure your seat with simulated card payments within the 10-minute hold window. Track live trip status, receive real-time notifications as drivers arrive or depart, and cancel reservations if plans change.",
+          text: "Search and book scheduled or immediate departures across active commuter routes. Secure your seat with card payments within the 10-minute hold window. Track live trip status, receive real-time notifications as drivers arrive or depart, and cancel reservations if plans change.",
         })
       )
     );
@@ -689,11 +689,11 @@ async function createBookAndPayCard(res, container) {
   );
   resCard.appendChild(routeRow);
 
-  // An already-expired hold must render as "Hold expired. Book again from Search." with no buttons and no timer
+  // An already-expired hold must render as "The hold expired; no seat was reserved" with no buttons and no timer
   if (isAlreadyExpired) {
     const expiredNotice = el("div", {
       className: "hold-expired-box",
-      text: "Hold expired. Book again from Search.",
+      text: "The hold expired; no seat was reserved",
     });
     resCard.appendChild(expiredNotice);
     return resCard;
@@ -709,100 +709,270 @@ async function createBookAndPayCard(res, container) {
   );
   resCard.appendChild(countdownBox);
 
-  // Payment simulation action buttons
-  const paySuccessBtn = el("button", {
-    type: "button",
-    className: "btn btn-primary btn-pay",
-    text: "Pay (simulate success)",
-    onclick: () => handleExecutePayment(res.id, "SUCCESS", paySuccessBtn, payFailBtn, container),
-  });
+  // Action area for payment buttons / waiting state
+  const actionArea = el("div", { className: "payment-action-area" });
+  resCard.appendChild(actionArea);
 
-  const payFailBtn = el("button", {
-    type: "button",
-    className: "btn btn-outline btn-pay btn-fail",
-    text: "Simulate failed payment",
-    onclick: () => handleExecutePayment(res.id, "FAILURE", paySuccessBtn, payFailBtn, container),
-  });
+  let pollInterval = null;
+  let visibilityListener = null;
 
-  const btnRow = el("div", { className: "payment-buttons-row" }, paySuccessBtn, payFailBtn);
-  resCard.appendChild(btnRow);
+  function stopPolling() {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
+    if (visibilityListener) {
+      document.removeEventListener("visibilitychange", visibilityListener);
+      visibilityListener = null;
+    }
+  }
 
-  // When hold runs out: changes to "Hold expired. Book again from Search." without reload and loses buttons
+  // When hold runs out: changes to "The hold expired; no seat was reserved"
   let stopTimer = null;
   function onHoldExpired() {
+    stopPolling();
     if (typeof stopTimer === "function") {
       stopTimer();
     }
     countdownBox.replaceChildren(
-      el("div", { className: "hold-expired-box", text: "Hold expired. Book again from Search." })
+      el("div", { className: "hold-expired-box", text: "The hold expired; no seat was reserved" })
     );
     statusBadge.className = "badge badge-status-expired";
     statusBadge.textContent = "Hold expired";
-    if (btnRow && btnRow.parentNode) {
-      btnRow.remove();
+    if (actionArea && actionArea.parentNode) {
+      actionArea.remove();
     }
+    showToast("The hold expired; no seat was reserved", "error");
   }
 
   if (holdExpiresAt) {
     stopTimer = startCountdown(holdExpiresAt, countdownSpan, onHoldExpired);
   }
 
-  return resCard;
-}
+  // Initial payment action: "Pay with Paystack"
+  const paystackBtn = el("button", {
+    type: "button",
+    id: `paystack-btn-${res.id}`,
+    className: "btn btn-primary btn-pay",
+    text: "Pay with Paystack",
+    onclick: () => handlePayWithPaystack(),
+  });
+  actionArea.appendChild(paystackBtn);
 
-/**
- * Handles payment flow: POST /reservations/:id/payments then POST /payments/:id/callback
- * Reloads the list after every payment action.
- */
-async function handleExecutePayment(reservationId, outcome, btnSuccess, btnFail, container) {
-  btnSuccess.disabled = true;
-  btnFail.disabled = true;
+  let isCheckingStatus = false;
 
-  try {
-    // Step 1: Initiate payment
-    const initRes = await api("POST", `/reservations/${reservationId}/payments`);
-    if (!initRes.ok) {
-      const errorMsg = initRes.data?.error || "Payment initiation failed";
-      showToast(errorMsg, "error", initRes.status);
+  async function checkReservationStatus(force = false) {
+    if (!resCard.isConnected) {
+      stopPolling();
       return;
     }
 
-    const paymentId = initRes.data?.paymentId || initRes.data?.id;
-    if (!paymentId) {
-      showToast("No payment ID returned by server", "error");
+    if (document.hidden && !force) {
       return;
     }
 
-    // Step 2: Callback simulation
-    const callbackRes = await api("POST", `/payments/${paymentId}/callback`, { outcome });
-    if (!callbackRes.ok) {
-      const errorMsg = callbackRes.data?.error || "Payment callback failed";
-      showToast(errorMsg, "error", callbackRes.status);
-      return;
-    }
+    if (isCheckingStatus) return;
+    isCheckingStatus = true;
 
-    // Step 3: Interpret outcome in plain words
-    const cbStatus = callbackRes.data?.status;
+    try {
+      const { status, ok, data } = await api("GET", `/reservations/${res.id}`);
+      if (!resCard.isConnected) {
+        stopPolling();
+        return;
+      }
 
-    if (cbStatus === "SUCCEEDED") {
-      showToast("Payment confirmed", "success");
-    } else if (cbStatus === "FAILED") {
-      showToast("Payment failed: the seat was released", "error");
-    } else if (cbStatus === "IGNORED") {
-      showToast("Too late: the hold had expired", "error");
-    } else {
-      const fallbackMsg = callbackRes.data?.message || `Payment resolved with status: ${cbStatus}`;
-      showToast(fallbackMsg, "success");
+      if (!ok) {
+        return;
+      }
+
+      if (data.status === "CONFIRMED") {
+        stopPolling();
+        showToast("Payment confirmed", "success");
+        switchTab("trips");
+        const listArea = document.getElementById("trips-list-area");
+        if (listArea) loadTripsList(listArea);
+        return;
+      }
+
+      if (data.status === "EXPIRED") {
+        stopPolling();
+        onHoldExpired();
+        return;
+      }
+
+      if (data.status !== "PENDING_PAYMENT") {
+        stopPolling();
+        await renderBookAndPayTab(container);
+      }
+    } catch (err) {
+      console.error("Error polling reservation status:", err);
+    } finally {
+      isCheckingStatus = false;
     }
-  } catch (err) {
-    console.error("Payment execution error:", err);
-    showToast(err.message || String(err), "error");
-  } finally {
-    btnSuccess.disabled = false;
-    btnFail.disabled = false;
-    // Reload the list after every payment action
-    await renderBookAndPayTab(container);
   }
+
+  function startWaitingAndPolling() {
+    actionArea.replaceChildren();
+
+    const waitingBox = el(
+      "div",
+      { className: "payment-waiting-box" },
+      el("div", { className: "waiting-header", text: "Waiting for payment confirmation..." }),
+      el("p", {
+        className: "waiting-desc",
+        text: "Please complete your payment in the Paystack checkout tab. This page will update automatically once confirmed.",
+      }),
+      el("button", {
+        type: "button",
+        id: `check-now-btn-${res.id}`,
+        className: "btn btn-outline btn-sm check-now-btn",
+        text: "I have paid, check now",
+        onclick: async (e) => {
+          const btn = e.currentTarget;
+          if (btn) btn.disabled = true;
+          try {
+            await checkReservationStatus(true);
+          } finally {
+            if (btn && resCard.isConnected) {
+              btn.disabled = false;
+            }
+          }
+        },
+      })
+    );
+    actionArea.appendChild(waitingBox);
+
+    stopPolling();
+    pollInterval = setInterval(() => checkReservationStatus(false), 3000);
+
+    visibilityListener = () => {
+      if (!document.hidden && resCard.isConnected) {
+        checkReservationStatus(false);
+      }
+    };
+    document.addEventListener("visibilitychange", visibilityListener);
+  }
+
+  function renderSimulatedButtons(paymentId) {
+    actionArea.replaceChildren();
+
+    const paySuccessBtn = el("button", {
+      type: "button",
+      className: "btn btn-primary btn-pay",
+      text: "Pay (simulate success)",
+      onclick: () => handleSimulatedPayment(paymentId, "SUCCESS", paySuccessBtn, payFailBtn),
+    });
+
+    const payFailBtn = el("button", {
+      type: "button",
+      className: "btn btn-outline btn-pay btn-fail",
+      text: "Simulate failed payment",
+      onclick: () => handleSimulatedPayment(paymentId, "FAILURE", paySuccessBtn, payFailBtn),
+    });
+
+    const simRow = el("div", { className: "payment-buttons-row" }, paySuccessBtn, payFailBtn);
+    actionArea.appendChild(simRow);
+  }
+
+  async function handleSimulatedPayment(paymentId, outcome, btnSuccess, btnFail) {
+    btnSuccess.disabled = true;
+    btnFail.disabled = true;
+
+    try {
+      let targetPaymentId = paymentId;
+      if (!targetPaymentId) {
+        const initRes = await api("POST", `/reservations/${res.id}/payments`, { provider: "SIMULATED" });
+        if (!initRes.ok) {
+          showToast(initRes.data?.error || initRes.data?.message || "Payment initiation failed", "error", initRes.status);
+          return;
+        }
+        targetPaymentId = initRes.data?.paymentId || initRes.data?.id;
+      }
+
+      const callbackRes = await api("POST", `/payments/${targetPaymentId}/callback`, { outcome });
+      if (!callbackRes.ok) {
+        showToast(callbackRes.data?.error || callbackRes.data?.message || "Payment callback failed", "error", callbackRes.status);
+        return;
+      }
+
+      const cbStatus = callbackRes.data?.status;
+      if (cbStatus === "SUCCEEDED") {
+        showToast("Payment confirmed", "success");
+      } else if (cbStatus === "FAILED") {
+        showToast("Payment failed: the seat was released", "error");
+      } else if (cbStatus === "IGNORED") {
+        showToast("Too late: the hold had expired", "error");
+      } else {
+        showToast(callbackRes.data?.message || `Payment resolved with status: ${cbStatus}`, "success");
+      }
+    } catch (err) {
+      showToast(err.message || String(err), "error");
+    } finally {
+      btnSuccess.disabled = false;
+      btnFail.disabled = false;
+      await renderBookAndPayTab(container);
+    }
+  }
+
+  async function handlePayWithPaystack() {
+    // 1. To avoid pop-up blocking, call window.open("", "_blank") synchronously inside the click handler
+    let checkoutWin = null;
+    try {
+      checkoutWin = window.open("", "_blank");
+    } catch (err) {
+      console.warn("Could not open blank window:", err);
+    }
+
+    paystackBtn.disabled = true;
+
+    try {
+      // Call POST /reservations/:id/payments with no body
+      const { status, ok, data } = await api("POST", `/reservations/${res.id}/payments`);
+
+      if (!ok) {
+        if (checkoutWin && !checkoutWin.closed) {
+          checkoutWin.close();
+        }
+        paystackBtn.disabled = false;
+        const errorMsg = data?.error || data?.message || "Payment initiation failed";
+        showToast(errorMsg, "error", status);
+        return;
+      }
+
+      if (data && data.checkoutUrl) {
+        if (checkoutWin && !checkoutWin.closed) {
+          checkoutWin.location.href = data.checkoutUrl;
+        } else {
+          window.open(data.checkoutUrl, "_blank");
+        }
+        startWaitingAndPolling();
+        return;
+      }
+
+      // If the answer has no checkoutUrl, close the window and show the server's message / fallback
+      if (checkoutWin && !checkoutWin.closed) {
+        checkoutWin.close();
+      }
+
+      // 3. If development with simulated mode on (no checkoutUrl and provider SIMULATED or paymentId returned)
+      if (data?.provider === "SIMULATED" || data?.paymentId) {
+        renderSimulatedButtons(data.paymentId);
+        return;
+      }
+
+      paystackBtn.disabled = false;
+      const msg = data?.message || data?.error || "No checkout URL returned";
+      showToast(msg, "error", status);
+    } catch (err) {
+      if (checkoutWin && !checkoutWin.closed) {
+        checkoutWin.close();
+      }
+      paystackBtn.disabled = false;
+      showToast(err.message || String(err), "error");
+    }
+  }
+
+  return resCard;
 }
 
 /* ==========================================================================
@@ -1092,6 +1262,89 @@ function createTripStepper(tripStatus) {
 }
 
 /**
+ * Formats payment status into plain words for display.
+ */
+function formatPaymentStatus(status) {
+  if (!status) return "Unknown";
+  switch (status) {
+    case "REFUND_PENDING":
+      return "Refund processing";
+    case "REFUNDED":
+      return "Refunded";
+    case "REFUND_FAILED":
+      return "Refund failed";
+    case "SUCCEEDED":
+      return "Succeeded";
+    case "PENDING":
+      return "Pending";
+    case "FAILED":
+      return "Failed";
+    case "EXPIRED":
+      return "Expired";
+    default:
+      return String(status).replace(/_/g, " ").toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
+  }
+}
+
+function getPaymentStatusBadgeClass(status) {
+  switch (status) {
+    case "SUCCEEDED":
+      return "badge-status-confirmed";
+    case "REFUNDED":
+      return "badge-status-refunded";
+    case "REFUND_PENDING":
+      return "badge-status-refund-pending";
+    case "PENDING":
+      return "badge-status-pending_payment";
+    case "FAILED":
+    case "REFUND_FAILED":
+      return "badge-status-failed";
+    case "EXPIRED":
+      return "badge-status-expired";
+    default:
+      return "badge-status-info";
+  }
+}
+
+/**
+ * Polls GET /payments/:id every 3 seconds for up to 60 seconds after cancellation.
+ */
+function pollRefundStatus(paymentId) {
+  const startTime = Date.now();
+  const maxDurationMs = 60000;
+
+  const timer = setInterval(async () => {
+    if (Date.now() - startTime >= maxDurationMs) {
+      clearInterval(timer);
+      return;
+    }
+
+    if (document.hidden) {
+      return;
+    }
+
+    try {
+      const { ok, data } = await api("GET", `/payments/${paymentId}`);
+      if (!ok || !data) return;
+
+      if (data.status === "REFUNDED") {
+        clearInterval(timer);
+        showToast("Refunded", "success");
+        const listArea = document.getElementById("trips-list-area");
+        if (listArea) loadTripsList(listArea);
+      } else if (data.status === "REFUND_FAILED") {
+        clearInterval(timer);
+        showToast("Refund could not be processed; contact support", "error");
+        const listArea = document.getElementById("trips-list-area");
+        if (listArea) loadTripsList(listArea);
+      }
+    } catch (err) {
+      console.error("Refund status polling error:", err);
+    }
+  }, 3000);
+}
+
+/**
  * Cancels a confirmed reservation: POST /reservations/:id/cancel
  */
 async function handleCancelReservation(reservationId, buttonEl) {
@@ -1105,20 +1358,28 @@ async function handleCancelReservation(reservationId, buttonEl) {
   try {
     const { status, ok, data } = await api("POST", `/reservations/${reservationId}/cancel`);
     if (!ok) {
-      const msg = data?.error || "Failed to cancel reservation";
+      const msg = data?.error || data?.message || "Failed to cancel reservation";
       showToast(msg, "error", status);
       return;
     }
 
-    const refundAmount = data.refund?.amount;
-    const msg = refundAmount
-      ? `Reservation cancelled. Simulated refund: ${formatMoney(refundAmount)}`
-      : "Reservation cancelled successfully.";
-    showToast(msg, "success");
-
     // Refresh trips list immediately
     const listArea = document.getElementById("trips-list-area");
     if (listArea) loadTripsList(listArea);
+
+    const refund = data.refund;
+    if (refund && refund.status === "PENDING") {
+      showToast(`Refund of ${formatMoney(refund.amount)} requested; processing`, "success");
+      if (refund.paymentId) {
+        pollRefundStatus(refund.paymentId);
+      }
+    } else {
+      const refundAmount = refund?.amount;
+      const msg = refundAmount
+        ? `Reservation cancelled. Refund: ${formatMoney(refundAmount)}`
+        : "Reservation cancelled successfully.";
+      showToast(msg, "success");
+    }
   } finally {
     if (buttonEl) {
       buttonEl.disabled = false;
@@ -1184,7 +1445,10 @@ async function loadTripDetails(reservationId, bodyEl) {
           el("div", { className: "details-grid" },
             el("div", { className: "details-row" },
               el("span", { className: "details-label", text: "Payment Status:" }),
-              el("span", { className: "badge badge-status-ok", text: pd.status })
+              el("span", {
+                className: `badge ${getPaymentStatusBadgeClass(pd.status)}`,
+                text: formatPaymentStatus(pd.status),
+              })
             ),
             el("div", { className: "details-row" },
               el("span", { className: "details-label", text: "Amount:" }),
@@ -1201,12 +1465,15 @@ async function loadTripDetails(reservationId, bodyEl) {
         pBox.appendChild(
           el("div", { className: "details-grid" },
             el("div", { className: "details-row" },
-              el("span", { className: "details-label", text: "Status:" }),
-              el("span", { text: p.status })
+              el("span", { className: "details-label", text: "Payment Status:" }),
+              el("span", {
+                className: `badge ${getPaymentStatusBadgeClass(p.status)}`,
+                text: formatPaymentStatus(p.status),
+              })
             ),
             el("div", { className: "details-row" },
               el("span", { className: "details-label", text: "Amount:" }),
-              el("span", { text: formatMoney(p.amount) })
+              el("span", { className: "details-val", text: formatMoney(p.amount) })
             ),
             el("div", { className: "details-row" },
               el("span", { className: "details-label", text: "Refunded At:" }),

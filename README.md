@@ -62,6 +62,9 @@ Every variable defined in `.env.example`:
   - Example: `postgresql://username:password@ep-sample-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require`
 - `JWT_SECRET`: A long, cryptographically random secret string used to sign and verify HMAC-SHA256 JWT access tokens.
 - `PORT`: The local HTTP port on which the Express server listens (default: `3000`).
+- `PAYSTACK_SECRET_KEY`: Paystack secret API key for test mode. Must start with `sk_test_` (live keys starting with `sk_live_` are strictly rejected with HTTP 503).
+- `PUBLIC_BASE_URL`: Public base URL of your application (default: `http://localhost:3000`), used to construct checkout return URLs (`/payments/return`).
+- `ALLOW_SIMULATED_PAYMENTS`: Optional variable (commented out in `.env.example`). Only works outside production (`NODE_ENV !== "production"`) and only for local development.
 
 *(Note on `HOLD_MINUTES`: As stated above, this optional variable can be placed in `.env` during manual development to test hold expiration quickly, but must never be set in `.env.test` or exported in a test shell).*
 
@@ -300,7 +303,75 @@ Render's free tier does not provide a terminal Shell. Therefore, database migrat
 
 ---
 
-## 10. Troubleshooting
+## 10. Payments: Paystack test mode
+
+MoveMe integrates Paystack for payment processing in test mode.
+
+### Environment Variables
+
+Configure the following variables in `.env` (and your deployment environment):
+- `PAYSTACK_SECRET_KEY`: Your Paystack secret API key for test mode. Must start with `sk_test_` (e.g. `sk_test_your_paystack_secret_key_here`). Live keys starting with `sk_live_` are strictly rejected by the server with HTTP 503 to prevent accidental live charges.
+- `PUBLIC_BASE_URL`: The publicly reachable base URL of the service (default: `http://localhost:3000`, or your deployed cloud URL such as `https://move-me-1nu3.onrender.com`). Used to construct customer checkout redirect callback URLs (`${PUBLIC_BASE_URL}/payments/return`).
+- `ALLOW_SIMULATED_PAYMENTS`: Optional toggle (commented out by default in `.env.example`). Setting this to `true` allows simulated payment callbacks. It strictly functions only outside production (`NODE_ENV !== "production"`) and only for local development. In production or whenever disabled, `PAYSTACK` is the default provider.
+
+### How a Payment Works End to End
+
+1. **Seat Reservation & Hold**:
+   A commuter passenger reserves a seat on a scheduled departure via `POST /departures/:id/reservations`. This creates a reservation in `PENDING_PAYMENT` status with a 10-minute hold (`hold_expires_at`).
+2. **Initiating Checkout**:
+   The passenger initiates payment via `POST /reservations/:id/payments` with `{ "provider": "PAYSTACK" }`.
+   The server generates a unique transaction reference formatted as `mm_<uuid>`, initializes the transaction with the Paystack API (`https://api.paystack.co/transaction/initialize`), creates a payment record in `PENDING` status with `provider = 'PAYSTACK'`, and returns HTTP 201:
+   ```json
+   {
+     "paymentId": "123e4567-e89b-12d3-a456-426614174000",
+     "status": "PENDING",
+     "provider": "PAYSTACK",
+     "reference": "mm_123e4567-e89b-12d3-a456-426614174000",
+     "checkoutUrl": "https://checkout.paystack.com/0123456789abcdef"
+   }
+   ```
+3. **Customer Checkout**:
+   The passenger opens `checkoutUrl` in their browser and enters test card credentials on the Paystack hosted checkout page.
+4. **Return Redirect Landing Page**:
+   After completing or exiting the checkout flow, Paystack redirects the browser to the return URL: `${PUBLIC_BASE_URL}/payments/return` (`GET /payments/return`).
+   This public HTML landing page informs the passenger that their payment has been submitted and confirmation is finalized once the payment provider notifies the server.
+5. **Asynchronous Webhook Event Delivery**:
+   Concurrently and asynchronously, Paystack dispatches a webhook POST request to `${PUBLIC_BASE_URL}/webhooks/paystack`.
+   The request is authenticated via an HMAC SHA512 signature in the `x-paystack-signature` header, computed over the raw request body with `PAYSTACK_SECRET_KEY`.
+6. **Signature Verification & Settlement**:
+   The server verifies the signature using constant-time comparison (`crypto.timingSafeEqual`).
+   Upon validating a `charge.success` event with matching amount, currency (`NGN`), and reference:
+   - If the reservation hold is still active and valid, the server transitions the payment to `SUCCEEDED`, transitions the reservation to `CONFIRMED`, increments the departure's booked seat count, and dispatches a notification to the passenger.
+   - If the payment arrived too late (the 10-minute hold elapsed) or the departure was cancelled, the payment is marked `EXPIRED` and an automated refund request is immediately submitted to Paystack.
+
+### Webhook URL Configuration
+
+In your Paystack Dashboard:
+1. Navigate to **Settings > Preferences > API Keys & Webhooks**.
+2. Locate the **Test Webhook URL** field.
+3. Enter your public webhook URL:
+   ```
+   https://<your-domain>/webhooks/paystack
+   ```
+   - For deployed environments (e.g. Render): `https://move-me-1nu3.onrender.com/webhooks/paystack`
+   - For local development: Use a tunnel service such as ngrok or localtunnel (e.g. `https://your-subdomain.ngrok-free.app/webhooks/paystack`).
+
+### Test Card Numbers
+
+To test successful charges, declines, 3D Secure OTPs, and card errors, use card numbers directly from Paystack's official documentation:
+- **Paystack Test Cards Reference**: [https://paystack.com/docs/payments/test-payments/](https://paystack.com/docs/payments/test-payments/)
+- *(Do not copy, paste, or hardcode test card numbers into application code, configuration files, or repositories).*
+
+### Known Limits
+
+- **Automated Refunds**: Refunds for Paystack payments are requested from Paystack automatically (passenger cancellation, driver cancellation, and payments that arrive too late) and in test mode no real money moves.
+- **Refund Retries (`REFUND_PENDING`)**: A refund request that fails stays `REFUND_PENDING` and is retried with `npm run refunds:retry` (run from your own machine, with `--yes`).
+- **Refunds Needing Attention**: Paystack can mark a refund as needing attention (customer bank details), which is handled in its dashboard.
+- **Abandoned Checkouts**: An abandoned checkout produces no event, so the hold simply expires.
+
+---
+
+## 11. Troubleshooting
 
 The table below outlines real failure modes encountered during development, their underlying causes, and direct fixes:
 
@@ -315,9 +386,12 @@ The table below outlines real failure modes encountered during development, thei
 
 ---
 
-## 11. Known Limitations
+## 12. Known Limitations
 
-1. **Simulated Payment Processing**:  
-   MoveMe operates in demonstration mode. Payments are simulated via internal endpoints ([src/routes/payment.routes.ts](file:///c:/Users/HP/Desktop/MOVE%20ME/src/routes/payment.routes.ts)); real-world payment acquiring webhooks (e.g., Paystack, Flutterwave, Stripe) are not integrated.
+1. **Paystack Test Mode & Settlement Constraints**:
+   - Refunds for Paystack payments are requested from Paystack automatically (passenger cancellation, driver cancellation and payments that arrive too late) and in test mode no real money moves.
+   - A refund request that fails stays `REFUND_PENDING` and is retried with `npm run refunds:retry` (run from your own machine, with `--yes`).
+   - Paystack can mark a refund as needing attention (customer bank details), which is handled in its dashboard.
+   - An abandoned checkout produces no event, so the hold simply expires.
 2. **Remote Database Test Latency**:  
    Because all 228+ integration tests execute against a live cloud-hosted PostgreSQL database in AWS US-East-2 rather than a local mock, the full test run takes approximately 15 minutes.

@@ -67,13 +67,150 @@
             "example": "Descriptive error message"
           }
         }
+      },
+      "PaymentStatus": {
+        "type": "string",
+        "enum": [
+          "PENDING",
+          "SUCCEEDED",
+          "FAILED",
+          "EXPIRED",
+          "REFUND_PENDING",
+          "REFUNDED",
+          "REFUND_FAILED"
+        ],
+        "description": "Status of a payment. Includes refund lifecycle statuses: REFUND_PENDING, REFUNDED, and REFUND_FAILED.",
+        "example": "SUCCEEDED"
       }
     }
   },
   "paths": {
+    "/webhooks/paystack": {
+      "post": {
+        "summary": "Paystack payment gateway webhook listener (Public).",
+        "description": "Webhook endpoint called by Paystack (not by clients) to report payment settlement and refund events. Authenticated by HMAC SHA512 signature in the x-paystack-signature header.",
+        "tags": [
+          "Payments"
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-paystack-signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "HMAC SHA512 signature of request body computed with PAYSTACK_SECRET_KEY"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "event",
+                  "data"
+                ],
+                "properties": {
+                  "event": {
+                    "type": "string",
+                    "example": "charge.success"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "example": "success"
+                      },
+                      "reference": {
+                        "type": "string",
+                        "example": "mm_123e4567-e89b-12d3-a456-426614174000"
+                      },
+                      "amount": {
+                        "type": "integer",
+                        "description": "Amount charged in kobo (NGN)",
+                        "example": 300000
+                      },
+                      "currency": {
+                        "type": "string",
+                        "example": "NGN"
+                      }
+                    }
+                  }
+                }
+              },
+              "examples": {
+                "chargeSuccess": {
+                  "summary": "Example charge.success event",
+                  "value": {
+                    "event": "charge.success",
+                    "data": {
+                      "status": "success",
+                      "reference": "mm_123e4567-e89b-12d3-a456-426614174000",
+                      "amount": 300000,
+                      "currency": "NGN"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event received and processed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "received": {
+                      "type": "boolean",
+                      "example": true
+                    }
+                  }
+                },
+                "example": {
+                  "received": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid signature",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "Invalid signature"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "Internal server error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/routes": {
       "get": {
-        "summary": "List active routes",
+        "summary": "Retrieve all active routes in the system (PASSENGER, DRIVER, or ADMIN roles).",
         "description": "Returns all active routes ordered by pickup point. Accessible by any authenticated user regardless of role.",
         "tags": [
           "Departures"
@@ -95,28 +232,22 @@
                     "properties": {
                       "id": {
                         "type": "string",
-                        "format": "uuid",
-                        "example": "123e4567-e89b-12d3-a456-426614174000"
+                        "format": "uuid"
                       },
                       "pickup_point": {
-                        "type": "string",
-                        "example": "Ikeja City Mall, Alausa, Ikeja"
+                        "type": "string"
                       },
                       "dropoff_point": {
-                        "type": "string",
-                        "example": "Victoria Island Financial District, Lagos"
+                        "type": "string"
                       },
                       "base_duration_minutes": {
-                        "type": "integer",
-                        "example": 45
+                        "type": "integer"
                       },
                       "base_fare_solo": {
-                        "type": "string",
-                        "example": "7500.00"
+                        "type": "string"
                       },
                       "base_fare_per_seat": {
-                        "type": "string",
-                        "example": "2500.00"
+                        "type": "string"
                       }
                     }
                   }
@@ -139,14 +270,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Authentication token missing or invalid"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Authentication token missing or invalid"
@@ -159,14 +283,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Internal server error"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Internal server error"
@@ -179,7 +296,7 @@
     },
     "/reservations/{id}/payments": {
       "post": {
-        "summary": "Initiate simulated payment",
+        "summary": "Initiate simulated payment for a held reservation (PASSENGER role only).",
         "description": "Creates a PENDING payment for a reservation if the hold is still valid.",
         "tags": [
           "Payments"
@@ -208,8 +325,32 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "SIMULATED",
+                      "PAYSTACK"
+                    ],
+                    "description": "Payment provider (defaults to SIMULATED if allowed, otherwise PAYSTACK)"
+                  },
                   "idempotencyKey": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Unique client idempotency key"
+                  }
+                }
+              },
+              "examples": {
+                "paystack": {
+                  "summary": "Paystack payment initiation",
+                  "value": {
+                    "provider": "PAYSTACK"
+                  }
+                },
+                "simulated": {
+                  "summary": "Simulated payment initiation",
+                  "value": {
+                    "provider": "SIMULATED",
+                    "idempotencyKey": "123e4567-e89b-12d3-a456-426614174099"
                   }
                 }
               },
@@ -234,6 +375,40 @@
                     "status": {
                       "type": "string",
                       "example": "PENDING"
+                    },
+                    "provider": {
+                      "type": "string",
+                      "enum": [
+                        "SIMULATED",
+                        "PAYSTACK"
+                      ]
+                    },
+                    "reference": {
+                      "type": "string",
+                      "description": "Paystack transaction reference (returned when provider is PAYSTACK)"
+                    },
+                    "checkoutUrl": {
+                      "type": "string",
+                      "description": "Paystack checkout URL (returned when provider is PAYSTACK)"
+                    }
+                  }
+                },
+                "examples": {
+                  "paystack": {
+                    "summary": "Paystack payment response",
+                    "value": {
+                      "paymentId": "123e4567-e89b-12d3-a456-426614174000",
+                      "status": "PENDING",
+                      "provider": "PAYSTACK",
+                      "reference": "mm_123e4567-e89b-12d3-a456-426614174000",
+                      "checkoutUrl": "https://checkout.paystack.com/0123456789abcdef"
+                    }
+                  },
+                  "simulated": {
+                    "summary": "Simulated payment response",
+                    "value": {
+                      "paymentId": "123e4567-e89b-12d3-a456-426614174000",
+                      "status": "PENDING"
                     }
                   }
                 },
@@ -251,6 +426,23 @@
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 },
+                "examples": {
+                  "invalidId": {
+                    "value": {
+                      "error": "Invalid reservation ID format"
+                    }
+                  },
+                  "invalidProvider": {
+                    "value": {
+                      "error": "Invalid payment provider"
+                    }
+                  },
+                  "simulatedDisabled": {
+                    "value": {
+                      "error": "Simulated payments are disabled"
+                    }
+                  }
+                },
                 "example": {
                   "error": "Invalid reservation ID format"
                 }
@@ -258,7 +450,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
+            "description": "Authentication token missing or invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -297,7 +489,7 @@
             }
           },
           "409": {
-            "description": "Reservation not pending payment or hold already expired",
+            "description": "Reservation not pending payment, hold already expired, or duplicate idempotency key",
             "content": {
               "application/json": {
                 "schema": {
@@ -321,13 +513,39 @@
                 }
               }
             }
+          },
+          "502": {
+            "description": "Payment provider unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "Payment provider unavailable"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Paystack is not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "Paystack is not configured"
+                }
+              }
+            }
           }
         }
       }
     },
     "/reservations/{id}": {
       "get": {
-        "summary": "Get reservation details",
+        "summary": "Retrieve reservation details (PASSENGER owner or departure DRIVER only).",
         "description": "Retrieves details of a reservation. Accessible only by the passenger who owns it or the driver who owns the departure. Opportunistically updates any PENDING_PAYMENT reservation whose hold elapsed to EXPIRED before responding.",
         "tags": [
           "Bookings"
@@ -393,7 +611,17 @@
                             "format": "uuid"
                           },
                           "status": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "PENDING",
+                              "SUCCEEDED",
+                              "FAILED",
+                              "EXPIRED",
+                              "REFUND_PENDING",
+                              "REFUNDED",
+                              "REFUND_FAILED"
+                            ],
+                            "description": "Payment status (including refund lifecycle statuses)"
                           },
                           "amount": {
                             "type": "string"
@@ -498,7 +726,7 @@
     },
     "/reservations/{id}/cancel": {
       "post": {
-        "summary": "Cancel a confirmed reservation",
+        "summary": "Cancel a confirmed reservation and issue a simulated refund (PASSENGER role only).",
         "description": "Passenger cancels a confirmed reservation before departure time and before trip start. Triggers simulated refund.",
         "tags": [
           "Bookings"
@@ -544,23 +772,20 @@
                       "format": "uuid"
                     },
                     "status": {
-                      "type": "string",
-                      "example": "CANCELLED"
+                      "type": "string"
                     },
                     "refund": {
                       "type": "object",
                       "properties": {
                         "simulated": {
-                          "type": "boolean",
-                          "example": true
+                          "type": "boolean"
                         },
                         "paymentId": {
                           "type": "string",
                           "format": "uuid"
                         },
                         "amount": {
-                          "type": "string",
-                          "example": "3000.00"
+                          "type": "string"
                         }
                       }
                     }
@@ -592,7 +817,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
+            "description": "Authentication token missing or invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -661,7 +886,7 @@
     },
     "/payments/{id}/callback": {
       "post": {
-        "summary": "Payment provider callback",
+        "summary": "Process payment provider outcome webhook (Simulated payment gateway / Public).",
         "description": "Internal simulated PSP webhook callback to settle payments. Performs critical MM-06 validity checks.",
         "tags": [
           "Payments"
@@ -720,20 +945,16 @@
                         "SUCCEEDED",
                         "FAILED",
                         "IGNORED"
-                      ],
-                      "example": "SUCCEEDED"
+                      ]
                     },
                     "reservationStatus": {
-                      "type": "string",
-                      "example": "CONFIRMED"
+                      "type": "string"
                     },
                     "message": {
-                      "type": "string",
-                      "example": "Late callback on expired reservation - payment marked EXPIRED"
+                      "type": "string"
                     },
                     "paymentStatus": {
-                      "type": "string",
-                      "example": "EXPIRED"
+                      "type": "string"
                     }
                   }
                 },
@@ -770,12 +991,37 @@
               }
             }
           },
+          "403": {
+            "description": "Forbidden - simulated callback on a Paystack payment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "This payment is confirmed by the payment provider only"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Payment or associated reservation not found",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "notFound": {
+                    "value": {
+                      "error": "Payment not found"
+                    }
+                  },
+                  "disabled": {
+                    "value": {
+                      "error": "Not found"
+                    }
+                  }
                 },
                 "example": {
                   "error": "Payment not found"
@@ -799,9 +1045,31 @@
         }
       }
     },
+    "/payments/return": {
+      "get": {
+        "summary": "Public payment provider return landing page.",
+        "description": "Public HTML landing page displayed to the user after returning from payment provider checkout. Informs the user that payment was submitted and the booking is confirmed when the payment provider notifies the server.",
+        "tags": [
+          "Payments"
+        ],
+        "responses": {
+          "200": {
+            "description": "HTML return page",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "<!DOCTYPE html><html lang=\"en\"><head><title>Payment Submitted - MoveMe</title></head><body>...</body></html>"
+              }
+            }
+          }
+        }
+      }
+    },
     "/payments/{id}": {
       "get": {
-        "summary": "Get payment details",
+        "summary": "Retrieve payment status and details (PASSENGER role only, reservation owner).",
         "description": "Retrieves details of a payment.",
         "tags": [
           "Payments"
@@ -843,7 +1111,17 @@
                       "type": "string"
                     },
                     "status": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "PENDING",
+                        "SUCCEEDED",
+                        "FAILED",
+                        "EXPIRED",
+                        "REFUND_PENDING",
+                        "REFUNDED",
+                        "REFUND_FAILED"
+                      ],
+                      "description": "Payment status (including refund lifecycle statuses: REFUND_PENDING, REFUNDED, REFUND_FAILED)"
                     },
                     "completed_at": {
                       "type": "string",
@@ -882,7 +1160,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
+            "description": "Authentication token missing or invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -938,7 +1216,7 @@
     },
     "/passengers/me/reservations": {
       "get": {
-        "summary": "List caller's own reservations",
+        "summary": "List all reservations belonging to the authenticated passenger (PASSENGER role only).",
         "description": "Retrieves all reservations belonging to the authenticated passenger, ordered by created_at descending. Opportunistically updates any stale PENDING_PAYMENT reservations whose hold has elapsed to EXPIRED before responding. Includes trip_status and departure timestamps.",
         "tags": [
           "Bookings"
@@ -971,16 +1249,13 @@
                         "format": "uuid"
                       },
                       "status": {
-                        "type": "string",
-                        "example": "CONFIRMED"
+                        "type": "string"
                       },
                       "trip_status": {
-                        "type": "string",
-                        "example": "SCHEDULED"
+                        "type": "string"
                       },
                       "fare_amount": {
-                        "type": "string",
-                        "example": "3000.00"
+                        "type": "string"
                       },
                       "hold_expires_at": {
                         "type": "string",
@@ -1081,7 +1356,7 @@
     },
     "/passengers/me/notifications": {
       "get": {
-        "summary": "List passenger notifications",
+        "summary": "List all notifications for the authenticated passenger (PASSENGER role only).",
         "description": "Retrieves all notifications belonging to the authenticated passenger, ordered newest first (created_at DESC). Supports ?unread=true query filter.",
         "tags": [
           "Bookings"
@@ -1155,7 +1430,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
+            "description": "Authentication token missing or invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -1198,7 +1473,7 @@
     },
     "/notifications/{id}/read": {
       "patch": {
-        "summary": "Mark notification as read",
+        "summary": "Mark a passenger notification as read (PASSENGER role only).",
         "description": "Marks a notification as read if it is currently unread. Idempotent. Requires PASSENGER role and ownership.",
         "tags": [
           "Bookings"
@@ -1275,7 +1550,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
+            "description": "Authentication token missing or invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -1288,7 +1563,7 @@
             }
           },
           "403": {
-            "description": "Forbidden - not your notification",
+            "description": "Forbidden - not your notification or insufficient permissions",
             "content": {
               "application/json": {
                 "schema": {
@@ -1331,7 +1606,7 @@
     },
     "/drivers/me/vehicles": {
       "post": {
-        "summary": "Add vehicle",
+        "summary": "Register a new vehicle for the authenticated driver (DRIVER role only).",
         "description": "Registers a new vehicle for the authenticated driver.",
         "tags": [
           "Vehicles"
@@ -1354,17 +1629,14 @@
                 ],
                 "properties": {
                   "description": {
-                    "type": "string",
-                    "example": "Toyota Camry 2021 (Silver)"
+                    "type": "string"
                   },
                   "registrationIdentifier": {
-                    "type": "string",
-                    "example": "LAG-789-XY"
+                    "type": "string"
                   },
                   "seatCapacity": {
                     "type": "integer",
-                    "minimum": 1,
-                    "example": 4
+                    "minimum": 1
                   }
                 }
               },
@@ -1386,8 +1658,7 @@
                   "properties": {
                     "vehicleId": {
                       "type": "string",
-                      "format": "uuid",
-                      "example": "123e4567-e89b-12d3-a456-426614174000"
+                      "format": "uuid"
                     }
                   }
                 },
@@ -1402,28 +1673,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Validation failed"
-                    },
-                    "details": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "field": {
-                            "type": "string"
-                          },
-                          "message": {
-                            "type": "string"
-                          }
-                        }
-                      }
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Validation failed"
@@ -1436,14 +1686,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Authentication token missing or invalid"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Authentication token missing or invalid"
@@ -1456,14 +1699,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Forbidden: insufficient permissions"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Forbidden: insufficient permissions"
@@ -1476,14 +1712,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Registration identifier already registered"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Registration identifier already registered"
@@ -1496,14 +1725,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Internal server error"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Internal server error"
@@ -1514,7 +1736,7 @@
         }
       },
       "get": {
-        "summary": "List my vehicles",
+        "summary": "Retrieve all vehicles owned by the authenticated driver (DRIVER role only).",
         "description": "Retrieves all vehicles belonging to the authenticated driver. Enforces strict data ownership so drivers only see their own vehicles.",
         "tags": [
           "Vehicles"
@@ -1536,34 +1758,27 @@
                     "properties": {
                       "id": {
                         "type": "string",
-                        "format": "uuid",
-                        "example": "123e4567-e89b-12d3-a456-426614174000"
+                        "format": "uuid"
                       },
                       "driver_id": {
                         "type": "string",
-                        "format": "uuid",
-                        "example": "123e4567-e89b-12d3-a456-426614174001"
+                        "format": "uuid"
                       },
                       "description": {
-                        "type": "string",
-                        "example": "Toyota Camry 2021 (Silver)"
+                        "type": "string"
                       },
                       "registration_identifier": {
-                        "type": "string",
-                        "example": "LAG-789-XY"
+                        "type": "string"
                       },
                       "seat_capacity": {
-                        "type": "integer",
-                        "example": 4
+                        "type": "integer"
                       },
                       "active": {
-                        "type": "boolean",
-                        "example": true
+                        "type": "boolean"
                       },
                       "created_at": {
                         "type": "string",
-                        "format": "date-time",
-                        "example": "2026-10-02T08:00:00.000Z"
+                        "format": "date-time"
                       }
                     }
                   }
@@ -1587,14 +1802,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Authentication token missing or invalid"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Authentication token missing or invalid"
@@ -1607,14 +1815,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Forbidden: insufficient permissions"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Forbidden: insufficient permissions"
@@ -1627,14 +1828,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Internal server error"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Internal server error"
@@ -1647,7 +1841,7 @@
     },
     "/drivers/me/departures": {
       "get": {
-        "summary": "List driver departures",
+        "summary": "List all departures published by the authenticated driver (DRIVER role only).",
         "description": "Retrieves all departures published by the authenticated driver, ordered soonest first (departure_time ASC). Each item includes status, mode, departure_time, capacity, available_capacity, and counts of confirmed and pending reservations.",
         "tags": [
           "Departures"
@@ -1672,32 +1866,26 @@
                         "format": "uuid"
                       },
                       "status": {
-                        "type": "string",
-                        "example": "SCHEDULED"
+                        "type": "string"
                       },
                       "mode": {
-                        "type": "string",
-                        "example": "POOLED"
+                        "type": "string"
                       },
                       "departure_time": {
                         "type": "string",
                         "format": "date-time"
                       },
                       "capacity": {
-                        "type": "integer",
-                        "example": 4
+                        "type": "integer"
                       },
                       "available_capacity": {
-                        "type": "integer",
-                        "example": 2
+                        "type": "integer"
                       },
                       "confirmed_reservations": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "integer"
                       },
                       "pending_reservations": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "integer"
                       }
                     }
                   }
@@ -1728,7 +1916,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
+            "description": "Authentication required or invalid token",
             "content": {
               "application/json": {
                 "schema": {
@@ -1771,7 +1959,7 @@
     },
     "/departures/search": {
       "get": {
-        "summary": "Search departures",
+        "summary": "Search scheduled departures by route, mode, and timing (PASSENGER role only).",
         "description": "Searches scheduled departures by route, mode, and timing. Immediate mode looks for departures within 15 minutes from now. Scheduled mode queries departures matching or after the given datetime. Requires PASSENGER role.",
         "tags": [
           "Departures"
@@ -1859,73 +2047,57 @@
                             "format": "uuid"
                           },
                           "pickup_point": {
-                            "type": "string",
-                            "example": "Ikeja Bus Terminal"
+                            "type": "string"
                           },
                           "pickupPoint": {
-                            "type": "string",
-                            "example": "Ikeja Bus Terminal"
+                            "type": "string"
                           },
                           "dropoff_point": {
-                            "type": "string",
-                            "example": "Victoria Island (Eko Hotel)"
+                            "type": "string"
                           },
                           "dropoffPoint": {
-                            "type": "string",
-                            "example": "Victoria Island (Eko Hotel)"
+                            "type": "string"
                           },
                           "departure_time": {
                             "type": "string",
-                            "format": "date-time",
-                            "example": "2026-10-02T12:00:00.000Z"
+                            "format": "date-time"
                           },
                           "departureTime": {
                             "type": "string",
-                            "format": "date-time",
-                            "example": "2026-10-02T12:00:00.000Z"
+                            "format": "date-time"
                           },
                           "driver_name": {
-                            "type": "string",
-                            "example": "John Driver"
+                            "type": "string"
                           },
                           "driverName": {
-                            "type": "string",
-                            "example": "John Driver"
+                            "type": "string"
                           },
                           "driver": {
-                            "type": "string",
-                            "example": "John Driver"
+                            "type": "string"
                           },
                           "fare_amount": {
-                            "type": "string",
-                            "example": "5000.00"
+                            "type": "string"
                           },
                           "fareAmount": {
-                            "type": "string",
-                            "example": "5000.00"
+                            "type": "string"
                           },
                           "mode": {
-                            "type": "string",
-                            "example": "SOLO"
+                            "type": "string"
                           },
                           "capacity": {
-                            "type": "integer",
-                            "example": 1
+                            "type": "integer"
                           },
                           "available_capacity": {
-                            "type": "integer",
-                            "example": 1
+                            "type": "integer"
                           },
                           "availableCapacity": {
-                            "type": "integer",
-                            "example": 1
+                            "type": "integer"
                           }
                         }
                       }
                     },
                     "empty": {
-                      "type": "boolean",
-                      "example": false
+                      "type": "boolean"
                     }
                   }
                 },
@@ -1963,28 +2135,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Validation failed"
-                    },
-                    "details": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "field": {
-                            "type": "string"
-                          },
-                          "message": {
-                            "type": "string"
-                          }
-                        }
-                      }
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Validation failed"
@@ -1997,14 +2148,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Authentication token missing or invalid"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Authentication token missing or invalid"
@@ -2017,14 +2161,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Forbidden: insufficient permissions"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Forbidden: insufficient permissions"
@@ -2037,14 +2174,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Internal server error"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Internal server error"
@@ -2057,7 +2187,7 @@
     },
     "/departures": {
       "post": {
-        "summary": "Publish departure",
+        "summary": "Publish a new scheduled departure (DRIVER role only, driver must be enabled).",
         "description": "Publishes a new departure. Requires DRIVER role, driver must be enabled (driver_enabled=true), vehicle must belong to the driver and be active, and route must exist and be active. Prevents overlapping departures via database exclusion constraints.",
         "tags": [
           "Departures"
@@ -2082,26 +2212,22 @@
                 "properties": {
                   "vehicleId": {
                     "type": "string",
-                    "format": "uuid",
-                    "example": "123e4567-e89b-12d3-a456-426614174000"
+                    "format": "uuid"
                   },
                   "routeId": {
                     "type": "string",
-                    "format": "uuid",
-                    "example": "7b13bc6e-19d2-4e89-b7e1-8cbdf6a92892"
+                    "format": "uuid"
                   },
                   "mode": {
                     "type": "string",
                     "enum": [
                       "SOLO",
                       "POOLED"
-                    ],
-                    "example": "SOLO"
+                    ]
                   },
                   "departureTime": {
                     "type": "string",
-                    "format": "date-time",
-                    "example": "2026-10-02T12:00:00Z"
+                    "format": "date-time"
                   }
                 }
               },
@@ -2124,24 +2250,19 @@
                   "properties": {
                     "departureId": {
                       "type": "string",
-                      "format": "uuid",
-                      "example": "123e4567-e89b-12d3-a456-426614174000"
+                      "format": "uuid"
                     },
                     "capacity": {
-                      "type": "integer",
-                      "example": 1
+                      "type": "integer"
                     },
                     "fareAmount": {
-                      "type": "string",
-                      "example": "5000.00"
+                      "type": "string"
                     },
                     "durationMinutes": {
-                      "type": "integer",
-                      "example": 45
+                      "type": "integer"
                     },
                     "status": {
-                      "type": "string",
-                      "example": "SCHEDULED"
+                      "type": "string"
                     }
                   }
                 },
@@ -2160,28 +2281,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Validation failed"
-                    },
-                    "details": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "field": {
-                            "type": "string"
-                          },
-                          "message": {
-                            "type": "string"
-                          }
-                        }
-                      }
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Validation failed"
@@ -2194,14 +2294,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Authentication token missing or invalid"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Authentication token missing or invalid"
@@ -2214,14 +2307,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Driver is not enabled to publish departures"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Driver is not enabled to publish departures"
@@ -2234,14 +2320,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Route not found"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Route not found"
@@ -2254,14 +2333,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Overlapping departure detected for this driver or vehicle"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Overlapping departure detected for this driver or vehicle"
@@ -2274,14 +2346,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Internal server error"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Internal server error"
@@ -2294,7 +2359,7 @@
     },
     "/departures/{id}/reservations": {
       "post": {
-        "summary": "Create departure reservation",
+        "summary": "Reserve a seat on a scheduled departure (PASSENGER role only).",
         "description": "Reserves a seat on a scheduled departure using the capacity-guard transaction. Holds capacity for 5 minutes (HOLD_MINUTES) in PENDING_PAYMENT status. Identical code path for SOLO and POOLED departures. Requires PASSENGER role.",
         "tags": [
           "Bookings"
@@ -2337,21 +2402,17 @@
                   "properties": {
                     "reservationId": {
                       "type": "string",
-                      "format": "uuid",
-                      "example": "123e4567-e89b-12d3-a456-426614174000"
+                      "format": "uuid"
                     },
                     "status": {
-                      "type": "string",
-                      "example": "PENDING_PAYMENT"
+                      "type": "string"
                     },
                     "holdExpiresAt": {
                       "type": "string",
-                      "format": "date-time",
-                      "example": "2026-10-02T12:05:00.000Z"
+                      "format": "date-time"
                     },
                     "fareAmount": {
-                      "type": "string",
-                      "example": "2500.00"
+                      "type": "string"
                     }
                   }
                 },
@@ -2369,14 +2430,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Invalid departure ID format"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Invalid departure ID format"
@@ -2389,14 +2443,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Authentication token missing or invalid"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Authentication token missing or invalid"
@@ -2409,14 +2456,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Forbidden: insufficient permissions"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Forbidden: insufficient permissions"
@@ -2429,14 +2469,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Departure not found"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Departure not found"
@@ -2449,14 +2482,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "No available capacity on this departure"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "No available capacity on this departure"
@@ -2469,14 +2495,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Internal server error"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
                   "error": "Internal server error"
@@ -2489,7 +2508,7 @@
     },
     "/departures/{id}/arrive": {
       "post": {
-        "summary": "Mark departure arrival",
+        "summary": "Mark vehicle arrival at departure pickup point (DRIVER role only, departure owner).",
         "description": "Driver marks vehicle arrival at pickup point. Departure status must be SCHEDULED. Sets status to ARRIVED and arrived_at timestamp. Driver can only have one active trip in progress or arrived.",
         "tags": [
           "Departures"
@@ -2535,8 +2554,7 @@
                       "format": "uuid"
                     },
                     "status": {
-                      "type": "string",
-                      "example": "ARRIVED"
+                      "type": "string"
                     },
                     "arrivedAt": {
                       "type": "string",
@@ -2566,7 +2584,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
+            "description": "Authentication token missing or invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -2635,7 +2653,7 @@
     },
     "/departures/{id}/depart": {
       "post": {
-        "summary": "Mark departure underway",
+        "summary": "Mark departure trip underway (DRIVER role only, departure owner).",
         "description": "Driver marks departure underway (trip start). Departure status must be ARRIVED. Sets status to IN_PROGRESS and departed_at timestamp.",
         "tags": [
           "Departures"
@@ -2681,8 +2699,7 @@
                       "format": "uuid"
                     },
                     "status": {
-                      "type": "string",
-                      "example": "IN_PROGRESS"
+                      "type": "string"
                     },
                     "departedAt": {
                       "type": "string",
@@ -2712,7 +2729,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
+            "description": "Authentication token missing or invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -2781,7 +2798,7 @@
     },
     "/departures/{id}/complete": {
       "post": {
-        "summary": "Mark departure completed",
+        "summary": "Mark departure trip as completed (DRIVER role only, departure owner).",
         "description": "Driver marks departure completed. Departure status must be IN_PROGRESS. Sets status to COMPLETED, completed_at timestamp, and moves all CONFIRMED reservations on this departure to COMPLETED in the same transaction.",
         "tags": [
           "Departures"
@@ -2827,8 +2844,7 @@
                       "format": "uuid"
                     },
                     "status": {
-                      "type": "string",
-                      "example": "COMPLETED"
+                      "type": "string"
                     },
                     "completedAt": {
                       "type": "string",
@@ -2858,7 +2874,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
+            "description": "Authentication token missing or invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -2927,7 +2943,7 @@
     },
     "/departures/{id}/cancel": {
       "post": {
-        "summary": "Cancel departure",
+        "summary": "Cancel a scheduled or arrived departure (DRIVER role only, departure owner).",
         "description": "Driver cancels a scheduled or arrived departure. Cancels all active reservations with cancellation_reason DEPARTURE_CANCELLED, marks SUCCEEDED payments as REFUNDED, marks PENDING payments as EXPIRED, generates passenger notifications, and frees the driver and vehicle time slots.",
         "tags": [
           "Departures"
@@ -2973,12 +2989,10 @@
                       "format": "uuid"
                     },
                     "status": {
-                      "type": "string",
-                      "example": "CANCELLED"
+                      "type": "string"
                     },
                     "cancelledReservations": {
-                      "type": "integer",
-                      "example": 3
+                      "type": "integer"
                     },
                     "refunds": {
                       "type": "array",
@@ -2990,8 +3004,7 @@
                             "format": "uuid"
                           },
                           "amount": {
-                            "type": "string",
-                            "example": "3000.00"
+                            "type": "string"
                           }
                         }
                       }
@@ -3026,7 +3039,7 @@
             }
           },
           "401": {
-            "description": "Authentication required",
+            "description": "Authentication token missing or invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -3095,7 +3108,7 @@
     },
     "/auth/register/passenger": {
       "post": {
-        "summary": "Register a new passenger",
+        "summary": "Register a new passenger account (Public).",
         "description": "Creates a new user account with PASSENGER role.",
         "tags": [
           "Auth"
@@ -3114,17 +3127,17 @@
                   "email": {
                     "type": "string",
                     "format": "email",
-                    "example": "passenger@example.com"
+                    "example": "ada.passenger@example.com"
                   },
                   "password": {
                     "type": "string",
                     "format": "password",
                     "minLength": 6,
-                    "example": "Password123!"
+                    "example": "SecurePassword123!"
                   },
                   "fullName": {
                     "type": "string",
-                    "example": "Jane Doe"
+                    "example": "Ada Lovelace"
                   },
                   "phone": {
                     "type": "string",
@@ -3152,7 +3165,7 @@
                     "userId": {
                       "type": "string",
                       "format": "uuid",
-                      "example": "123e4567-e89b-12d3-a456-426614174000"
+                      "example": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d"
                     }
                   }
                 },
@@ -3163,32 +3176,11 @@
             }
           },
           "400": {
-            "description": "Validation error",
+            "description": "Validation failed",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Validation failed"
-                    },
-                    "details": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "field": {
-                            "type": "string"
-                          },
-                          "message": {
-                            "type": "string"
-                          }
-                        }
-                      }
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -3198,14 +3190,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Email is already registered"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -3215,14 +3200,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Internal server error"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -3232,7 +3210,7 @@
     },
     "/auth/register/driver": {
       "post": {
-        "summary": "Register a new driver",
+        "summary": "Register a new driver account pending admin verification (Public).",
         "description": "Creates a new user account with DRIVER role. The driver account initially has driver_enabled set to false until verified and enabled by an admin.",
         "tags": [
           "Auth"
@@ -3251,17 +3229,17 @@
                   "email": {
                     "type": "string",
                     "format": "email",
-                    "example": "driver@example.com"
+                    "example": "kofi.driver@example.com"
                   },
                   "password": {
                     "type": "string",
                     "format": "password",
                     "minLength": 6,
-                    "example": "Password123!"
+                    "example": "DriverPassword123!"
                   },
                   "fullName": {
                     "type": "string",
-                    "example": "John Driver"
+                    "example": "Kofi Mensah"
                   },
                   "phone": {
                     "type": "string",
@@ -3289,7 +3267,7 @@
                     "userId": {
                       "type": "string",
                       "format": "uuid",
-                      "example": "123e4567-e89b-12d3-a456-426614174000"
+                      "example": "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed"
                     },
                     "driverEnabled": {
                       "type": "boolean",
@@ -3305,32 +3283,11 @@
             }
           },
           "400": {
-            "description": "Validation error",
+            "description": "Validation failed",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Validation failed"
-                    },
-                    "details": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "field": {
-                            "type": "string"
-                          },
-                          "message": {
-                            "type": "string"
-                          }
-                        }
-                      }
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -3340,14 +3297,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Email is already registered"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -3357,14 +3307,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Internal server error"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -3374,7 +3317,7 @@
     },
     "/auth/login": {
       "post": {
-        "summary": "Login user",
+        "summary": "Authenticate with email and password to receive a JWT access token (Public).",
         "description": "Authenticates a user by email and password, returning a JWT token with sub and role claims.",
         "tags": [
           "Auth"
@@ -3393,12 +3336,12 @@
                   "email": {
                     "type": "string",
                     "format": "email",
-                    "example": "user@example.com"
+                    "example": "ada.passenger@example.com"
                   },
                   "password": {
                     "type": "string",
                     "format": "password",
-                    "example": "Password123!"
+                    "example": "SecurePassword123!"
                   }
                 }
               },
@@ -3441,32 +3384,11 @@
             }
           },
           "400": {
-            "description": "Validation error",
+            "description": "Validation failed",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Validation failed"
-                    },
-                    "details": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "field": {
-                            "type": "string"
-                          },
-                          "message": {
-                            "type": "string"
-                          }
-                        }
-                      }
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -3476,14 +3398,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Invalid email or password"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -3493,14 +3408,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Internal server error"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -3510,7 +3418,7 @@
     },
     "/admin/drivers": {
       "get": {
-        "summary": "Pending drivers",
+        "summary": "List prospective drivers pending administrative approval (Admin only).",
         "description": "Lists drivers with optional status filtering. When status is set to pending, only drivers awaiting enablement (driver_enabled=false) are returned. Requires ADMIN role.",
         "tags": [
           "Admin"
@@ -3547,12 +3455,12 @@
                       "id": {
                         "type": "string",
                         "format": "uuid",
-                        "example": "123e4567-e89b-12d3-a456-426614174000"
+                        "example": "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed"
                       },
                       "email": {
                         "type": "string",
                         "format": "email",
-                        "example": "driver@example.com"
+                        "example": "kofi.driver@example.com"
                       },
                       "role": {
                         "type": "string",
@@ -3583,18 +3491,11 @@
             }
           },
           "401": {
-            "description": "Authentication required or invalid token",
+            "description": "Authentication token missing or invalid",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Authentication token missing or invalid"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -3604,14 +3505,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Forbidden: insufficient permissions"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -3621,14 +3515,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Internal server error"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -3638,7 +3525,7 @@
     },
     "/admin/drivers/{id}/enable": {
       "patch": {
-        "summary": "Enable driver",
+        "summary": "Enable or disable driver publishing privileges (Admin only).",
         "description": "Enables or disables a driver account. Enabling a driver is required before they can publish departures. Requires ADMIN role.",
         "tags": [
           "Admin"
@@ -3693,7 +3580,7 @@
                     "driverId": {
                       "type": "string",
                       "format": "uuid",
-                      "example": "123e4567-e89b-12d3-a456-426614174000"
+                      "example": "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed"
                     },
                     "enabled": {
                       "type": "boolean",
@@ -3709,49 +3596,21 @@
             }
           },
           "400": {
-            "description": "Validation error",
+            "description": "Validation failed",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Validation failed"
-                    },
-                    "details": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "field": {
-                            "type": "string"
-                          },
-                          "message": {
-                            "type": "string"
-                          }
-                        }
-                      }
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
           },
           "401": {
-            "description": "Authentication required or invalid token",
+            "description": "Authentication token missing or invalid",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Authentication token missing or invalid"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -3761,14 +3620,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Forbidden: insufficient permissions"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -3778,14 +3630,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Driver not found"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -3795,14 +3640,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error",
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Internal server error"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

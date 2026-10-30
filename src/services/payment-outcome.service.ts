@@ -1,10 +1,10 @@
 import { AppDataSource } from "../data-source";
 
 export type PaymentOutcomeResult =
-  | { status: "SUCCEEDED"; reservationStatus: "CONFIRMED" }
-  | { status: "FAILED"; reservationStatus: "FAILED" }
-  | { status: "IGNORED"; message: string; paymentStatus?: string }
-  | { error: string };
+  | { status: "SUCCEEDED"; reservationStatus: "CONFIRMED"; refundDue?: string }
+  | { status: "FAILED"; reservationStatus: "FAILED"; refundDue?: string }
+  | { status: "IGNORED"; message: string; paymentStatus?: string; refundDue?: string }
+  | { error: string; refundDue?: string };
 
 export async function applyPaymentOutcome(
   paymentId: string,
@@ -70,7 +70,7 @@ export async function applyPaymentOutcome(
 
     // 3. Lock payment FOR UPDATE, then reservation FOR UPDATE, and re-verify their statuses under the locks
     const payments = await queryRunner.query(
-      `SELECT id, reservation_id, amount, status, idempotency_key
+      `SELECT id, reservation_id, amount, status, idempotency_key, provider
        FROM payments
        WHERE id = $1
        FOR UPDATE;`,
@@ -120,8 +120,35 @@ export async function applyPaymentOutcome(
       isStillPending && isHoldValid && isDepartureValid;
 
     if (!isReservationStillValid) {
-      // Late callback on an expired or invalid reservation — treat it as a no-op (don't confirm, don't error loudly)
-      // Update payment to EXPIRED if it's still PENDING
+      // Late callback on an expired or invalid reservation
+      if (payment.provider === "PAYSTACK" && outcome === "SUCCESS") {
+        await queryRunner.query(
+          `UPDATE payments
+           SET status = 'REFUND_PENDING', refund_requested_at = now()
+           WHERE id = $1 AND status = 'PENDING';`,
+          [paymentId]
+        );
+
+        if (isStillPending) {
+          await queryRunner.query(
+            `UPDATE reservations
+             SET status = 'EXPIRED'
+             WHERE id = $1 AND status = 'PENDING_PAYMENT';`,
+            [reservation.id]
+          );
+        }
+
+        await queryRunner.commitTransaction();
+
+        return {
+          status: "IGNORED",
+          message: "Late payment on expired/invalid reservation - payment marked REFUND_PENDING",
+          paymentStatus: "REFUND_PENDING",
+          refundDue: payment.id,
+        };
+      }
+
+      // SIMULATED or non-SUCCESS behaves as today
       await queryRunner.query(
         `UPDATE payments
          SET status = 'EXPIRED', completed_at = now()
@@ -145,6 +172,39 @@ export async function applyPaymentOutcome(
         status: "IGNORED",
         message: "Late callback on expired reservation - payment marked EXPIRED",
         paymentStatus: "EXPIRED",
+      };
+    }
+
+    // Check if another payment for this reservation is already SUCCEEDED
+    const otherSucceeded = await queryRunner.query(
+      `SELECT id FROM payments
+       WHERE reservation_id = $1 AND status = 'SUCCEEDED' AND id != $2;`,
+      [reservation.id, paymentId]
+    );
+
+    if (otherSucceeded.length > 0) {
+      if (payment.provider === "PAYSTACK" && outcome === "SUCCESS") {
+        await queryRunner.query(
+          `UPDATE payments
+           SET status = 'REFUND_PENDING', refund_requested_at = now()
+           WHERE id = $1 AND status = 'PENDING';`,
+          [paymentId]
+        );
+
+        await queryRunner.commitTransaction();
+
+        return {
+          status: "IGNORED",
+          message: "Reservation already confirmed by another payment - refund pending",
+          paymentStatus: "REFUND_PENDING",
+          refundDue: payment.id,
+        };
+      }
+
+      await queryRunner.commitTransaction();
+      return {
+        status: "IGNORED",
+        message: "Duplicate successful payment for reservation - ignored",
       };
     }
 
@@ -175,13 +235,29 @@ export async function applyPaymentOutcome(
         };
       } catch (innerErr: any) {
         // Rely on the one_successful_payment_per_reservation unique index as the backstop
-        // against a duplicate success — catch that specific constraint violation and treat it as a no-op too
         if (
           innerErr.code === "23505" &&
           (innerErr.constraint?.includes("one_successful_payment") ||
             innerErr.detail?.includes("Key (reservation_id)"))
         ) {
           await queryRunner.rollbackTransaction();
+
+          if (payment.provider === "PAYSTACK") {
+            await AppDataSource.query(
+              `UPDATE payments
+               SET status = 'REFUND_PENDING', refund_requested_at = now()
+               WHERE id = $1 AND status = 'PENDING';`,
+              [paymentId]
+            );
+
+            return {
+              status: "IGNORED",
+              message: "Duplicate successful payment for reservation - refund pending",
+              paymentStatus: "REFUND_PENDING",
+              refundDue: payment.id,
+            };
+          }
+
           return {
             status: "IGNORED",
             message: "Duplicate successful payment for reservation - ignored",

@@ -8,6 +8,7 @@ import { User } from "../entities/user.entity";
 import { requireAuth, requireRole } from "../middleware/auth.middleware";
 import { defaultProvider, simulatedAllowed } from "../services/payment-mode";
 import { getSecretKey, toKobo, initializeTransaction } from "../services/paystack.client";
+import { requestRefund } from "../services/refund.service";
 
 const router = Router();
 
@@ -15,8 +16,8 @@ const router = Router();
  * @openapi
  * /reservations/{id}/payments:
  *   post:
- *     summary: Initiate simulated payment for a held reservation (PASSENGER role only).
- *     description: Creates a PENDING payment for a reservation if the hold is still valid.
+ *     summary: Initiate payment for a held reservation (PASSENGER role only).
+ *     description: Creates a PENDING payment for a held reservation. Supports both PAYSTACK and SIMULATED payment providers.
  *     tags:
  *       - Payments
  *     security:
@@ -36,10 +37,23 @@ const router = Router();
  *           schema:
  *             type: object
  *             properties:
+ *               provider:
+ *                 type: string
+ *                 enum: [SIMULATED, PAYSTACK]
+ *                 description: Payment provider (defaults to SIMULATED if allowed, otherwise PAYSTACK)
  *               idempotencyKey:
  *                 type: string
- *           example:
- *             idempotencyKey: "123e4567-e89b-12d3-a456-426614174099"
+ *                 description: Unique client idempotency key
+ *           examples:
+ *             paystack:
+ *               summary: Paystack payment initiation
+ *               value:
+ *                 provider: "PAYSTACK"
+ *             simulated:
+ *               summary: Simulated payment initiation
+ *               value:
+ *                 provider: "SIMULATED"
+ *                 idempotencyKey: "123e4567-e89b-12d3-a456-426614174099"
  *     responses:
  *       201:
  *         description: Payment initiated successfully
@@ -53,17 +67,46 @@ const router = Router();
  *                   format: uuid
  *                 status:
  *                   type: string
- *             example:
- *               paymentId: "123e4567-e89b-12d3-a456-426614174000"
- *               status: "PENDING"
+ *                   example: "PENDING"
+ *                 provider:
+ *                   type: string
+ *                   enum: [SIMULATED, PAYSTACK]
+ *                 reference:
+ *                   type: string
+ *                   description: Paystack transaction reference (returned when provider is PAYSTACK)
+ *                 checkoutUrl:
+ *                   type: string
+ *                   description: Paystack checkout URL (returned when provider is PAYSTACK)
+ *             examples:
+ *               paystack:
+ *                 summary: Paystack payment response
+ *                 value:
+ *                   paymentId: "123e4567-e89b-12d3-a456-426614174000"
+ *                   status: "PENDING"
+ *                   provider: "PAYSTACK"
+ *                   reference: "mm_123e4567-e89b-12d3-a456-426614174000"
+ *                   checkoutUrl: "https://checkout.paystack.com/0123456789abcdef"
+ *               simulated:
+ *                 summary: Simulated payment response
+ *                 value:
+ *                   paymentId: "123e4567-e89b-12d3-a456-426614174000"
+ *                   status: "PENDING"
  *       400:
- *         description: Invalid reservation ID format
+ *         description: Invalid reservation ID format, invalid payment provider, or simulated payments disabled
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
- *             example:
- *               error: "Invalid reservation ID format"
+ *             examples:
+ *               invalidId:
+ *                 value:
+ *                   error: "Invalid reservation ID format"
+ *               invalidProvider:
+ *                 value:
+ *                   error: "Invalid payment provider"
+ *               simulatedDisabled:
+ *                 value:
+ *                   error: "Simulated payments are disabled"
  *       401:
  *         description: Authentication token missing or invalid
  *         content:
@@ -96,6 +139,22 @@ const router = Router();
  *               $ref: '#/components/schemas/Error'
  *             example:
  *               error: "Reservation is no longer pending payment or hold has expired"
+ *       502:
+ *         description: Payment provider unavailable
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Payment provider unavailable"
+ *       503:
+ *         description: Paystack is not configured
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Paystack is not configured"
  *       500:
  *         description: Internal server error
  *         content:
@@ -319,6 +378,15 @@ router.post(
  *                         format: uuid
  *                       status:
  *                         type: string
+ *                         enum:
+ *                           - PENDING
+ *                           - SUCCEEDED
+ *                           - FAILED
+ *                           - EXPIRED
+ *                           - REFUND_PENDING
+ *                           - REFUNDED
+ *                           - REFUND_FAILED
+ *                         description: Payment status (including refund lifecycle statuses)
  *                       amount:
  *                         type: string
  *                       refunded_at:
@@ -715,12 +783,15 @@ router.post(
       }
 
       // - If the reservation has a SUCCEEDED payment:
-      //   UPDATE payments SET status = 'REFUNDED', refunded_at = now() WHERE reservation_id = $1 AND status = 'SUCCEEDED' RETURNING id, amount. Exactly one refund.
+      //   For PAYSTACK: status = 'REFUND_PENDING', refund_requested_at = now()
+      //   For SIMULATED: status = 'REFUNDED', refunded_at = now()
       const updatePaymentResult = await queryRunner.query(
         `UPDATE payments
-         SET status = 'REFUNDED', refunded_at = now()
+         SET status = CASE WHEN provider = 'PAYSTACK' THEN 'REFUND_PENDING' ELSE 'REFUNDED' END,
+             refunded_at = CASE WHEN provider = 'PAYSTACK' THEN NULL ELSE now() END,
+             refund_requested_at = CASE WHEN provider = 'PAYSTACK' THEN now() ELSE NULL END
          WHERE reservation_id = $1 AND status = 'SUCCEEDED'
-         RETURNING id, amount;`,
+         RETURNING id, amount, provider, status;`,
         [id]
       );
 
@@ -732,15 +803,27 @@ router.post(
           : (Array.isArray(updatePaymentResult) ? updatePaymentResult : []);
       const refundRow = refundRows[0];
 
+      const isPaystack = refundRow?.provider === "PAYSTACK";
+      const refundPayload: any = {
+        simulated: !isPaystack,
+        paymentId: refundRow?.id ?? null,
+        amount: refundRow?.amount ?? reservationPrelim.fare_amount,
+      };
+      if (isPaystack) {
+        refundPayload.status = "PENDING";
+      }
+
       res.status(200).json({
         reservationId: id,
         status: "CANCELLED",
-        refund: {
-          simulated: true,
-          paymentId: refundRow?.id ?? null,
-          amount: refundRow?.amount ?? reservationPrelim.fare_amount,
-        },
+        refund: refundPayload,
       });
+
+      if (isPaystack && refundRow?.id) {
+        requestRefund(refundRow.id).catch((err) => {
+          console.error(`Error requesting refund for payment ${refundRow.id}:`, err);
+        });
+      }
     } catch (err: any) {
       if (queryRunner.isTransactionActive) {
         await queryRunner.rollbackTransaction();

@@ -7,6 +7,7 @@ import { Vehicle } from "../entities/vehicle.entity";
 import { Route } from "../entities/route.entity";
 import { requireAuth, requireRole } from "../middleware/auth.middleware";
 import { validateBody, validateQuery } from "../middleware/validate.middleware";
+import { requestRefund } from "../services/refund.service";
 
 const router = Router();
 const departureRepository = AppDataSource.getRepository(Departure);
@@ -1466,15 +1467,19 @@ router.post(
           [id]
         );
 
-        // Every SUCCEEDED payment of those reservations: status = 'REFUNDED', refunded_at = now()
+        // Every SUCCEEDED payment of those reservations:
+        // For PAYSTACK: status = 'REFUND_PENDING', refund_requested_at = now()
+        // For SIMULATED: status = 'REFUNDED', refunded_at = now()
         const refundUpdateResult = await queryRunner.query(
           `UPDATE payments
-           SET status = 'REFUNDED', refunded_at = now()
+           SET status = CASE WHEN provider = 'PAYSTACK' THEN 'REFUND_PENDING' ELSE 'REFUNDED' END,
+               refunded_at = CASE WHEN provider = 'PAYSTACK' THEN NULL ELSE now() END,
+               refund_requested_at = CASE WHEN provider = 'PAYSTACK' THEN now() ELSE NULL END
            WHERE reservation_id IN (
              SELECT id FROM reservations
              WHERE departure_id = $1 AND cancellation_reason = 'DEPARTURE_CANCELLED'
            ) AND status = 'SUCCEEDED'
-           RETURNING id, reservation_id, amount;`,
+           RETURNING id, reservation_id, amount, provider, status;`,
           [id]
         );
 
@@ -1483,11 +1488,19 @@ router.post(
             ? refundUpdateResult[0]
             : (Array.isArray(refundUpdateResult) ? refundUpdateResult : []);
 
-        const refundMap = new Map<string, string>();
+        const refundMap = new Map<string, { id: string; amount: string; provider: string }>();
         for (const row of refundRows) {
-          refundMap.set(row.reservation_id, row.amount);
+          refundMap.set(row.reservation_id, {
+            id: row.id,
+            amount: row.amount,
+            provider: row.provider,
+          });
           refunds.push({ reservationId: row.reservation_id, amount: row.amount });
         }
+
+        const paystackPaymentIds = refundRows
+          .filter((row: any) => row.provider === "PAYSTACK")
+          .map((row: any) => row.id);
 
         // Every PENDING payment: status = 'EXPIRED', completed_at = now()
         await queryRunner.query(
@@ -1502,10 +1515,22 @@ router.post(
 
         // One notification row per affected reservation, in the same transaction
         for (const r of affectedReservations) {
-          const refundAmount = refundMap.get(r.id);
-          const refundPayload = refundAmount
-            ? { simulated: true, amount: refundAmount }
-            : null;
+          const refundInfo = refundMap.get(r.id);
+          let refundPayload: any = null;
+          if (refundInfo) {
+            if (refundInfo.provider === "PAYSTACK") {
+              refundPayload = {
+                simulated: false,
+                status: "PENDING",
+                amount: refundInfo.amount,
+              };
+            } else {
+              refundPayload = {
+                simulated: true,
+                amount: refundInfo.amount,
+              };
+            }
+          }
 
           const payload = {
             departureId: departure.id,
@@ -1525,6 +1550,35 @@ router.post(
             [r.passenger_id, "DEPARTURE_CANCELLED", JSON.stringify(payload)]
           );
         }
+
+        await queryRunner.commitTransaction();
+
+        res.status(200).json({
+          departureId: id,
+          status: "CANCELLED",
+          cancelledReservations: affectedReservations.length,
+          refunds,
+        });
+
+        if (paystackPaymentIds.length > 0) {
+          (async () => {
+            const executing = new Set<Promise<any>>();
+            for (const paymentId of paystackPaymentIds) {
+              const p: Promise<any> = requestRefund(paymentId).catch((err) => {
+                console.error(`Error requesting refund for payment ${paymentId}:`, err);
+              });
+              executing.add(p);
+              p.finally(() => executing.delete(p));
+              if (executing.size >= 3) {
+                await Promise.race(executing);
+              }
+            }
+            await Promise.all(executing);
+          })().catch((err) => {
+            console.error("Error processing driver cancellation refunds:", err);
+          });
+        }
+        return;
       }
 
       await queryRunner.commitTransaction();

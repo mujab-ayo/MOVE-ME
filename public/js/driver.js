@@ -1058,7 +1058,7 @@ async function handleCancelDeparture(departureId, btnEl, listContainer, feedback
       el("div", { className: "alert alert-info cancellation-summary-box" },
         el("strong", { text: "Cancellation Summary" }),
         el("p", {
-          text: `Cancelled ${cancelledCount} reservation(s). Total simulated refunds issued: ${formatMoney(totalRefundAmount)}. Notifications dispatched to passengers.`,
+          text: `Cancelled ${cancelledCount} reservation(s). Total refunds issued: ${formatMoney(totalRefundAmount)}. Notifications dispatched to passengers.`,
         })
       )
     );

@@ -439,7 +439,7 @@ describe("Paystack Webhook & Confirmation Flow (src/routes/paystack-webhook.rout
     expect(res.body.received).toBe(true);
   });
 
-  it("a late event after the hold expired leaves payment EXPIRED and reservation EXPIRED, never CONFIRMED", async () => {
+  it("a late event after the hold expired leaves payment REFUND_PENDING and reservation EXPIRED, never CONFIRMED", async () => {
     // Hold expired 1 minute ago
     const expiredTime = new Date(Date.now() - 60 * 1000);
     const { reservation, payment } = await createFixture({ holdExpiresAt: expiredTime });
@@ -468,7 +468,7 @@ describe("Paystack Webhook & Confirmation Flow (src/routes/paystack-webhook.rout
     const reservationRepo = AppDataSource.getRepository(Reservation);
 
     const dbPayment = await paymentRepo.findOne({ where: { id: payment.id } });
-    expect(dbPayment?.status).toBe("EXPIRED");
+    expect(dbPayment?.status).toBe("REFUND_PENDING");
 
     const dbReservation = await reservationRepo.findOne({ where: { id: reservation.id } });
     expect(dbReservation?.status).toBe("EXPIRED");
@@ -507,7 +507,7 @@ describe("Paystack Webhook & Confirmation Flow (src/routes/paystack-webhook.rout
     const reservationRepo = AppDataSource.getRepository(Reservation);
 
     const dbPayment1 = await paymentRepo.findOne({ where: { id: fixture1.payment.id } });
-    expect(dbPayment1?.status).toBe("EXPIRED");
+    expect(dbPayment1?.status).toBe("REFUND_PENDING");
 
     const dbReservation1 = await reservationRepo.findOne({ where: { id: fixture1.reservation.id } });
     expect(dbReservation1?.status).toBe("EXPIRED");
@@ -536,7 +536,7 @@ describe("Paystack Webhook & Confirmation Flow (src/routes/paystack-webhook.rout
     expect(res2.status).toBe(200);
 
     const dbPayment2 = await paymentRepo.findOne({ where: { id: fixture2.payment.id } });
-    expect(dbPayment2?.status).toBe("EXPIRED");
+    expect(dbPayment2?.status).toBe("REFUND_PENDING");
 
     const dbReservation2 = await reservationRepo.findOne({ where: { id: fixture2.reservation.id } });
     expect(dbReservation2?.status).toBe("EXPIRED");
